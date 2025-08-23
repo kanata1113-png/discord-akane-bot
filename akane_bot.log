@@ -1,0 +1,72 @@
+2025-08-18 12:15:55,485 - discord.client - WARNING - PyNaCl is not installed, voice will NOT be supported
+2025-08-18 12:15:55,530 - __main__ - INFO - データベース初期化完了
+2025-08-18 12:15:55,532 - discord.client - INFO - logging in using static token
+2025-08-18 12:15:56,239 - __main__ - INFO - 古いデータのクリーンアップ完了
+2025-08-18 12:15:56,240 - __main__ - ERROR - 統計更新エラー: 'NoneType' object has no attribute 'change_presence'
+2025-08-18 12:15:56,762 - discord.gateway - INFO - Shard ID None has connected to Gateway (Session ID: 8afed52c4a9ee7130de29f569450dac6).
+2025-08-18 12:15:58,787 - __main__ - INFO - 茜ちゃんが起動したで〜！ 表自派茜ちゃん#2392
+2025-08-18 12:15:58,787 - __main__ - INFO - 参加サーバー数: 2
+2025-08-18 12:15:58,787 - __main__ - INFO - GPT-5使用モード（改善版）
+2025-08-18 12:16:20,353 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2025-08-18 12:16:20,354 - __main__ - WARNING - GPT-5呼び出し失敗 (試行 1/3): Error code: 400 - {'error': {'message': "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}
+2025-08-18 12:16:21,908 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2025-08-18 12:16:21,908 - __main__ - WARNING - GPT-5呼び出し失敗 (試行 2/3): Error code: 400 - {'error': {'message': "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}
+2025-08-18 12:16:24,164 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2025-08-18 12:16:24,164 - __main__ - WARNING - GPT-5呼び出し失敗 (試行 3/3): Error code: 400 - {'error': {'message': "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}
+2025-08-18 12:16:24,164 - __main__ - ERROR - 通常チャットエラー: Error code: 400 - {'error': {'message': "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}
+2025-08-18 12:16:47,461 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2025-08-18 12:16:47,461 - __main__ - WARNING - GPT-5呼び出し失敗 (試行 1/3): Error code: 400 - {'error': {'message': "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}
+2025-08-18 12:16:49,147 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2025-08-18 12:16:49,148 - __main__ - WARNING - GPT-5呼び出し失敗 (試行 2/3): Error code: 400 - {'error': {'message': "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}
+2025-08-18 12:16:51,402 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2025-08-18 12:16:51,402 - __main__ - WARNING - GPT-5呼び出し失敗 (試行 3/3): Error code: 400 - {'error': {'message': "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}
+2025-08-18 12:16:51,402 - __main__ - ERROR - 通常チャットエラー: Error code: 400 - {'error': {'message': "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}
+2025-08-18 12:23:49,616 - discord.client - WARNING - PyNaCl is not installed, voice will NOT be supported
+2025-08-18 12:23:49,618 - __main__ - INFO - データベース初期化完了
+2025-08-18 12:23:49,619 - discord.client - INFO - logging in using static token
+2025-08-18 12:23:50,517 - __main__ - INFO - 古いデータのクリーンアップ完了
+2025-08-18 12:23:50,519 - __main__ - ERROR - 統計更新エラー: 'NoneType' object has no attribute 'change_presence'
+2025-08-18 12:23:51,136 - discord.gateway - INFO - Shard ID None has connected to Gateway (Session ID: 0c0560e13e4206987993f140d792bc1d).
+2025-08-18 12:23:53,161 - __main__ - INFO - 茜ちゃんが起動したで〜！ 表自派茜ちゃん#2392
+2025-08-18 12:23:53,162 - __main__ - INFO - 参加サーバー数: 2
+2025-08-18 12:23:53,162 - __main__ - INFO - GPT-5使用モード（改善版）
+2025-08-18 12:24:17,881 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2025-08-18 12:24:17,882 - __main__ - WARNING - GPT-5呼び出し失敗 (試行 1/3): Error code: 400 - {'error': {'message': "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}
+2025-08-18 12:24:19,170 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2025-08-18 12:24:19,171 - __main__ - WARNING - GPT-5呼び出し失敗 (試行 2/3): Error code: 400 - {'error': {'message': "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}
+2025-08-18 12:24:21,468 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2025-08-18 12:24:21,469 - __main__ - WARNING - GPT-5呼び出し失敗 (試行 3/3): Error code: 400 - {'error': {'message': "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}
+2025-08-18 12:24:21,469 - __main__ - ERROR - 通常チャットエラー: Error code: 400 - {'error': {'message': "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.", 'type': 'invalid_request_error', 'param': 'max_tokens', 'code': 'unsupported_parameter'}}
+2025-08-18 12:30:27,138 - discord.client - WARNING - PyNaCl is not installed, voice will NOT be supported
+2025-08-18 12:30:27,139 - __main__ - INFO - データベース初期化完了
+2025-08-18 12:30:27,140 - discord.client - INFO - logging in using static token
+2025-08-18 12:30:27,920 - __main__ - INFO - 古いデータのクリーンアップ完了
+2025-08-18 12:30:27,921 - __main__ - ERROR - 統計更新エラー: 'NoneType' object has no attribute 'change_presence'
+2025-08-18 12:30:28,453 - discord.gateway - INFO - Shard ID None has connected to Gateway (Session ID: 4a945624dbefd63affd85175cd362be0).
+2025-08-18 12:30:30,495 - __main__ - INFO - 茜ちゃんが起動したで〜！ 表自派茜ちゃん#2392
+2025-08-18 12:30:30,497 - __main__ - INFO - 参加サーバー数: 2
+2025-08-18 12:30:30,498 - __main__ - INFO - GPT-4o使用モード（改善版）
+2025-08-18 12:30:48,352 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-08-18 12:31:34,112 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-08-18 12:33:29,141 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-08-18 13:42:53,076 - discord.gateway - INFO - Shard ID None has successfully RESUMED session 4a945624dbefd63affd85175cd362be0.
+2025-08-18 13:53:36,719 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-08-18 14:32:57,218 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-08-18 15:30:50,403 - discord.gateway - INFO - Shard ID None has successfully RESUMED session 4a945624dbefd63affd85175cd362be0.
+2025-08-18 16:56:51,877 - discord.gateway - INFO - Shard ID None has successfully RESUMED session 4a945624dbefd63affd85175cd362be0.
+2025-08-18 17:10:57,704 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-08-18 17:11:46,646 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-08-18 17:13:04,273 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-08-18 18:33:04,986 - discord.gateway - INFO - Shard ID None has successfully RESUMED session 4a945624dbefd63affd85175cd362be0.
+2025-08-18 20:30:09,119 - discord.gateway - INFO - Shard ID None has successfully RESUMED session 4a945624dbefd63affd85175cd362be0.
+2025-08-18 21:08:24,166 - discord.gateway - INFO - Shard ID None has successfully RESUMED session 4a945624dbefd63affd85175cd362be0.
+2025-08-18 21:14:33,354 - discord.gateway - INFO - Shard ID None has successfully RESUMED session 4a945624dbefd63affd85175cd362be0.
+2025-08-19 00:02:12,976 - discord.gateway - INFO - Shard ID None has successfully RESUMED session 4a945624dbefd63affd85175cd362be0.
+2025-08-19 00:46:26,710 - discord.gateway - INFO - Shard ID None has successfully RESUMED session 4a945624dbefd63affd85175cd362be0.
+2025-08-19 02:20:04,305 - discord.gateway - INFO - Shard ID None has successfully RESUMED session 4a945624dbefd63affd85175cd362be0.
+2025-08-19 02:58:28,741 - discord.gateway - INFO - Shard ID None has successfully RESUMED session 4a945624dbefd63affd85175cd362be0.
+2025-08-19 04:32:40,365 - discord.gateway - INFO - Shard ID None has successfully RESUMED session 4a945624dbefd63affd85175cd362be0.
+2025-08-19 06:43:35,756 - discord.gateway - INFO - Shard ID None has successfully RESUMED session 4a945624dbefd63affd85175cd362be0.
+2025-08-19 08:45:36,320 - discord.gateway - INFO - Shard ID None has successfully RESUMED session 4a945624dbefd63affd85175cd362be0.
+2025-08-19 09:53:45,216 - discord.gateway - INFO - Shard ID None has successfully RESUMED session 4a945624dbefd63affd85175cd362be0.
+2025-08-19 11:10:40,979 - discord.gateway - INFO - Shard ID None has successfully RESUMED session 4a945624dbefd63affd85175cd362be0.
