@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands, tasks
 import openai
+import httpx
 import os
 import asyncio
 import sqlite3
