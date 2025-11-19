@@ -114,36 +114,36 @@ class AkaneBot(commands.Bot):
             logger.error(f"通常チャットエラー: {e}")
             return "ちょっと調子悪いみたいや〜😅 もう一回試してくれる？"
 
-    async def call_gpt_with_retry(
-        self,
-        system_prompt: str,
-        user_message: str,
-        max_tokens: int = 500,
-        reasoning_effort: str = "none",
-        max_retries: int = 3
-    ) -> str:
-        """GPT-5.1 対応版：max_completion_tokens を用い、reasoning_effort パラメータを追加"""
-        for attempt in range(max_retries):
-            try:
-                response = client.chat.completions.create(
-                    model=self.config.GPT_MODEL,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_message}
-                    ],
-                    max_completion_tokens = max_tokens,        # ← 旧 max_tokens から変更
-                    reasoning_effort = reasoning_effort,       # ← 新しく追加
-                    # temperature 等のパラメータはモデルがサポートしていない可能性あり
-                )
-                return response.choices[0].message.content
+async def call_gpt_with_retry(
+    self,
+    system_prompt: str,
+    user_message: str,
+    max_tokens: int = 500,
+    reasoning_effort: str = "none",
+    max_retries: int = 3
+) -> str:
+    """GPT-5.1 対応版：max_completion_tokens を用い、reasoning_effort パラメータを追加"""
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model=self.config.GPT_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user",   "content": user_message}
+                ],
+                max_completion_tokens = max_tokens,    # ← 修正箇所
+                reasoning_effort     = reasoning_effort  # ← 新パラメータ
+                # temperature, presence_penalty などはモデルがサポートしていない場合もあります。 :contentReference[oaicite:0]{index=0}
+            )
+            return response.choices[0].message.content
 
-            except Exception as e:
-                logger.warning(f"GPT呼び出し失敗 (試行 {attempt + 1}/{max_retries}): {e}")
-                if attempt == max_retries - 1:
-                    raise
-                await asyncio.sleep(2 ** attempt)
-        # 万一ループを抜けたら
-        raise RuntimeError("GPT 呼び出しが全試行とも失敗")
+        except Exception as e:
+            logger.warning(f"GPT呼び出し失敗 (試行 {attempt+1}/{max_retries}): {e}")
+            if attempt == max_retries - 1:
+                raise
+            await asyncio.sleep(2 ** attempt)
+
+    raise RuntimeError("GPT 呼び出しが全試行とも失敗しました")
 
 # メイン実行部分
 if __name__ == '__main__':
