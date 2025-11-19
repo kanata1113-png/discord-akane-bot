@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 # OpenAI設定（新しいクライアント形式）
 # ★ ここを "gpt-5.1" などに変えれば、使うモデルを一発で切り替えられる
 class OpenAIConfig:
-    GPT_MODEL = "gpt-5.1"  # 将来 gpt-5.1 が出たら "gpt-5.1" に変更
+    GPT_MODEL = "gpt-5"  # 将来 gpt-5.1 が出たら "gpt-5.1" に変更
 
 client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
