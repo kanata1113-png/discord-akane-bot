@@ -34,6 +34,10 @@ class OpenAIConfig:
 
 client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+print("=== OPENAI VERSION CHECK ===")
+print("openai version:", openai.__version__)
+print("================================")
+
 # タイムゾーン設定（日本時間）
 JST = pytz.timezone("Asia/Tokyo")
 
