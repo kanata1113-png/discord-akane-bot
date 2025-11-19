@@ -26,6 +26,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+print("=== VERSIONS CHECK ===")
+print("openai version:", openai.__version__)
+print("httpx version:", httpx.__version__)
+print("=== END VERSIONS CHECK ===")
+
 # OpenAI設定（新しいクライアント形式）
 client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
