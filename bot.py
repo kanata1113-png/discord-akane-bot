@@ -9,57 +9,81 @@ import pytz
 import re
 from dotenv import load_dotenv
 import logging
-from typing import Optional, Dict, List
+from typing import Dict, List, Optional
+
+# ========== 基本設定 ==========
 
 # 環境変数を読み込み
 load_dotenv()
 
-# ログ設定の改善
+# ログ設定
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler('akane_bot.log', encoding='utf-8'),
-        logging.StreamHandler()
-    ]
+        logging.FileHandler("akane_bot.log", encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
 )
 logger = logging.getLogger(__name__)
 
-# OpenAI設定
+# OpenAI 設定
 class OpenAIConfig:
-    # ここを変えるだけで使うモデルを切り替えられる
-    # 例: "gpt-4.1", "gpt-4o", "o3-mini" など
-    GPT_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.1")
+    # ここを変えるだけでモデル切り替え可能
+    GPT_MODEL = "gpt-5.1"  # うまくいかない場合は "gpt-4.1" などに戻してテストも可
 
-# OpenAI Python SDK クライアント
 client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # タイムゾーン設定（日本時間）
-JST = pytz.timezone('Asia/Tokyo')
+JST = pytz.timezone("Asia/Tokyo")
 
+
+# ========== 設定クラス ==========
 
 class BotConfig:
     DAILY_MESSAGE_LIMIT = 100
     MAX_RESPONSE_LENGTH = 2000
-    DATABASE_NAME = 'akane_data.db'
+    DATABASE_NAME = "akane_data.db"
     REGULATION_ANALYSIS_MAX_TOKENS = 1200
     NORMAL_CHAT_MAX_TOKENS = 600
 
     GPT_MODEL = OpenAIConfig.GPT_MODEL
 
-    # 表現規制関連キーワード
     REGULATION_KEYWORDS = [
-        '表現規制', '規制', '検閲', '制限', '禁止', '表現の自由',
-        '言論統制', 'センサーシップ', '表現統制', '言論規制',
-        '弾圧', '抑圧', 'コンプライアンス', '自主規制'
+        "表現規制",
+        "規制",
+        "検閲",
+        "制限",
+        "禁止",
+        "表現の自由",
+        "言論統制",
+        "センサーシップ",
+        "表現統制",
+        "言論規制",
+        "弾圧",
+        "抑圧",
+        "コンプライアンス",
+        "自主規制",
     ]
-
     QUESTION_KEYWORDS = [
-        '妥当', '適切', '正しい', 'どう思う', 'どう考える',
-        '意見', '判断', '評価', 'どうなん', 'どない思う',
-        'どうやと思う', 'どうや', '評価して', '分析して'
+        "妥当",
+        "適切",
+        "正しい",
+        "どう思う",
+        "どう考える",
+        "意見",
+        "判断",
+        "評価",
+        "どうなん",
+        "どない思う",
+        "どうやと思う",
+        "どうや",
+        "評価して",
+        "分析して",
     ]
 
+
+# ========== データベース管理 ==========
 
 class DatabaseManager:
     """データベース管理クラス"""
@@ -69,12 +93,13 @@ class DatabaseManager:
         self.init_database()
 
     def init_database(self):
-        """データベーススキーマ初期化"""
+        """DB スキーマ初期化"""
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
 
         # 使用ログテーブル
-        cursor.execute('''
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS usage_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
@@ -84,10 +109,12 @@ class DatabaseManager:
                 last_message_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(user_id, date)
             )
-        ''')
+        """
+        )
 
         # 会話履歴テーブル
-        cursor.execute('''
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS conversation_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
@@ -97,10 +124,12 @@ class DatabaseManager:
                 timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
                 response_time_ms INTEGER
             )
-        ''')
+        """
+        )
 
         # 表現規制分析結果テーブル
-        cursor.execute('''
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS regulation_analysis (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
@@ -113,12 +142,19 @@ class DatabaseManager:
                 detailed_analysis TEXT,
                 timestamp TEXT DEFAULT CURRENT_TIMESTAMP
             )
-        ''')
+        """
+        )
 
         # インデックス作成
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_usage_user_date ON usage_log(user_id, date)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_conversation_user ON conversation_history(user_id)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_regulation_user ON regulation_analysis(user_id)')
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_usage_user_date ON usage_log(user_id, date)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_conversation_user ON conversation_history(user_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_regulation_user ON regulation_analysis(user_id)"
+        )
 
         conn.commit()
         conn.close()
@@ -129,15 +165,18 @@ class DatabaseManager:
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
 
-        today = datetime.now(JST).strftime('%Y-%m-%d')
-        cursor.execute('SELECT count FROM usage_log WHERE user_id = ? AND date = ?', (user_id, today))
+        today = datetime.now(JST).strftime("%Y-%m-%d")
+        cursor.execute(
+            "SELECT count FROM usage_log WHERE user_id = ? AND date = ?",
+            (user_id, today),
+        )
         result = cursor.fetchone()
 
         # ユーザー名を更新
         if username and result:
             cursor.execute(
-                'UPDATE usage_log SET username = ? WHERE user_id = ? AND date = ?',
-                (username, user_id, today)
+                "UPDATE usage_log SET username = ? WHERE user_id = ? AND date = ?",
+                (username, user_id, today),
             )
             conn.commit()
 
@@ -149,28 +188,33 @@ class DatabaseManager:
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
 
-        today = datetime.now(JST).strftime('%Y-%m-%d')
+        today = datetime.now(JST).strftime("%Y-%m-%d")
         now = datetime.now(JST)
 
         try:
             cursor.execute(
-                '''
+                """
                 INSERT INTO usage_log (user_id, username, date, count, last_message_at)
                 VALUES (?, ?, ?, 1, ?)
-                ''',
-                (user_id, username, today, now.isoformat())
+            """,
+                (user_id, username, today, now.isoformat()),
             )
             new_count = 1
         except sqlite3.IntegrityError:
             cursor.execute(
-                '''
+                """
                 UPDATE usage_log
-                SET count = count + 1, last_message_at = ?, username = COALESCE(?, username)
+                SET count = count + 1,
+                    last_message_at = ?,
+                    username = COALESCE(?, username)
                 WHERE user_id = ? AND date = ?
-                ''',
-                (now.isoformat(), username, user_id, today)
+            """,
+                (now.isoformat(), username, user_id, today),
             )
-            cursor.execute('SELECT count FROM usage_log WHERE user_id = ? AND date = ?', (user_id, today))
+            cursor.execute(
+                "SELECT count FROM usage_log WHERE user_id = ? AND date = ?",
+                (user_id, today),
+            )
             new_count = cursor.fetchone()[0]
 
         conn.commit()
@@ -183,7 +227,7 @@ class DatabaseManager:
         message: str,
         response: str,
         is_regulation: bool = False,
-        response_time_ms: Optional[int] = None
+        response_time_ms: Optional[int] = None,
     ):
         """会話履歴を保存"""
         conn = sqlite3.connect(self.db_name)
@@ -191,12 +235,12 @@ class DatabaseManager:
 
         now = datetime.now(JST)
         cursor.execute(
-            '''
+            """
             INSERT INTO conversation_history
             (user_id, message, response, is_regulation_analysis, response_time_ms, timestamp)
             VALUES (?, ?, ?, ?, ?, ?)
-            ''',
-            (user_id, message, response, is_regulation, response_time_ms, now.isoformat())
+        """,
+            (user_id, message, response, is_regulation, response_time_ms, now.isoformat()),
         )
 
         conn.commit()
@@ -209,7 +253,7 @@ class DatabaseManager:
         question: str,
         scores: Dict[str, int],
         judgment: str,
-        analysis: str
+        analysis: str,
     ):
         """表現規制分析結果を保存"""
         conn = sqlite3.connect(self.db_name)
@@ -217,29 +261,31 @@ class DatabaseManager:
 
         now = datetime.now(JST)
         cursor.execute(
-            '''
+            """
             INSERT INTO regulation_analysis
-            (user_id, regulation_target, question, legal_basis_score,
-             legitimate_purpose_score, proportionality_score, overall_judgment,
-             detailed_analysis, timestamp)
+            (user_id, regulation_target, question,
+             legal_basis_score, legitimate_purpose_score, proportionality_score,
+             overall_judgment, detailed_analysis, timestamp)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''',
+        """,
             (
                 user_id,
                 target,
                 question,
-                scores.get('legal', 0),
-                scores.get('purpose', 0),
-                scores.get('proportion', 0),
+                scores.get("legal", 0),
+                scores.get("purpose", 0),
+                scores.get("proportion", 0),
                 judgment,
                 analysis,
-                now.isoformat()
-            )
+                now.isoformat(),
+            ),
         )
 
         conn.commit()
         conn.close()
 
+
+# ========== 表現規制分析 ==========
 
 class ExpressionRegulationAnalyzer:
     """表現規制分析クラス"""
@@ -249,24 +295,36 @@ class ExpressionRegulationAnalyzer:
 
     def detect_regulation_question(self, message: str) -> bool:
         """表現規制質問の検出"""
-        has_regulation = any(keyword in message for keyword in self.config.REGULATION_KEYWORDS)
-        has_question_word = any(keyword in message for keyword in self.config.QUESTION_KEYWORDS)
+        has_regulation = any(
+            keyword in message for keyword in self.config.REGULATION_KEYWORDS
+        )
+        has_question = any(
+            keyword in message for keyword in self.config.QUESTION_KEYWORDS
+        )
 
-        # 疑問文パターンの検出
-        question_patterns = [r'.*？$', r'.*\?$', r'^.*ですか.*', r'^.*やろか.*', r'^.*かな.*']
-        has_question_pattern = any(re.search(pattern, message) for pattern in question_patterns)
+        # 疑問文パターン
+        question_patterns = [
+            r".*？$",
+            r".*\?$",
+            r"^.*ですか.*",
+            r"^.*やろか.*",
+            r"^.*かな.*",
+        ]
+        has_question_pattern = any(
+            re.search(pattern, message) for pattern in question_patterns
+        )
 
-        return has_regulation and (has_question_word or has_question_pattern)
+        return has_regulation and (has_question or has_question_pattern)
 
     def extract_regulation_target(self, message: str) -> str:
         """規制対象抽出"""
         patterns = [
-            r'([^。！？\n]+?)への?(?:表現)?規制',
-            r'([^。！？\n]+?)を?規制',
-            r'([^。！？\n]+?)の?検閲',
-            r'([^。！？\n]+?)の?制限',
-            r'([^。！？\n]+?)の?禁止',
-            r'([^。！？\n]+?)について.*規制'
+            r"([^。！？\n]+?)への?(?:表現)?規制",
+            r"([^。！？\n]+?)を?規制",
+            r"([^。！？\n]+?)の?検閲",
+            r"([^。！？\n]+?)の?制限",
+            r"([^。！？\n]+?)の?禁止",
+            r"([^。！？\n]+?)について.*規制",
         ]
 
         for pattern in patterns:
@@ -291,45 +349,22 @@ class ExpressionRegulationAnalyzer:
 【審査フレームワーク】
 以下の3段階で構造化して分析し、各項目に1-5点で採点してください：
 
-1. **法律による根拠** (Legal Basis)
-   - 明確な法的根拠の存在
-   - 法律の明確性・予見可能性
-   - 憲法適合性
-   採点基準: 5=完璧, 4=良好, 3=普通, 2=問題あり, 1=重大な問題
+1. 法律による根拠 (Legal Basis)
+2. 正当な目的 (Legitimate Purpose)
+3. 必要性・比例性 (Necessity & Proportionality)
 
-2. **正当な目的** (Legitimate Purpose)
-   - 保護法益の重要性・緊急性
-   - 公共の福祉との関係
-   - 他の基本的人権との衡量
-   採点基準: 5=非常に正当, 4=正当, 3=一定の正当性, 2=疑問あり, 1=不正当
+関西弁で親しみやすく、一人称は「茜」で説明してください。
+"""
 
-3. **必要性・比例性** (Necessity & Proportionality)
-   - より制限的でない代替手段の検討
-   - 規制手段と目的の適合性
-   - 表現の自由への影響度
-   採点基準: 5=完全に比例的, 4=概ね比例的, 3=やや問題, 2=過度, 1=極めて過度
 
-【回答形式】
-- 関西弁で親しみやすく説明
-- 一人称は「茜」
-- 各審査項目ごとに点数と詳細な理由
-- 最終判断（妥当/要改善/問題あり）とその理由
-- 改善提案があれば含める
-
-【語調例】
-「これはなあ、法的根拠の面から見ると...」
-「目的は分からんでもないけど...」
-「茜が思うに、この規制はちょっと...」
-
-専門的だけど分かりやすく、表現の自由への愛を込めて分析してください♪"""
-
+# ========== ボット本体 ==========
 
 class AkaneBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.members = True
-        super().__init__(command_prefix=['!', '！'], intents=intents)
+        super().__init__(command_prefix=["!", "！"], intents=intents)
 
         self.config = BotConfig()
         self.db = DatabaseManager(self.config.DATABASE_NAME)
@@ -338,16 +373,35 @@ class AkaneBot(commands.Bot):
 
         # 統計情報
         self.stats = {
-            'total_messages': 0,
-            'regulation_analyses': 0,
-            'unique_users': set(),
-            'errors': 0
+            "total_messages": 0,
+            "regulation_analyses": 0,
+            "unique_users": set(),
+            "errors": 0,
         }
 
+    # ---- Discord ライフサイクル ----
+
     async def setup_hook(self):
-        """起動時の設定"""
         self.cleanup_old_data.start()
         self.update_stats.start()
+
+    async def on_ready(self):
+        logger.info(f"茜ちゃんが起動したで〜！ {self.user}")
+        logger.info(f"参加サーバー数: {len(self.guilds)}")
+        logger.info(f"GPTモデル使用モード: {self.config.GPT_MODEL}")
+
+        activity = discord.Activity(
+            type=discord.ActivityType.listening,
+            name="表現の自由について♪",
+        )
+        await self.change_presence(activity=activity)
+
+        print("=" * 50)
+        print("🌸 表自派茜ボット起動完了！")
+        print(f"📊 起動時刻: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"🤖 Discord.py: {discord.__version__}")
+        print(f"🧠 OpenAI model: {self.config.GPT_MODEL}")
+        print("=" * 50)
 
     @tasks.loop(hours=24)
     async def cleanup_old_data(self):
@@ -358,11 +412,13 @@ class AkaneBot(commands.Bot):
 
             # 30日以前の会話履歴を削除
             cutoff_date = (datetime.now(JST) - timedelta(days=30)).isoformat()
-            cursor.execute('DELETE FROM conversation_history WHERE timestamp < ?', (cutoff_date,))
+            cursor.execute(
+                "DELETE FROM conversation_history WHERE timestamp < ?", (cutoff_date,)
+            )
 
             # 90日以前の使用ログを削除
-            cutoff_date = (datetime.now(JST) - timedelta(days=90)).strftime('%Y-%m-%d')
-            cursor.execute('DELETE FROM usage_log WHERE date < ?', (cutoff_date,))
+            cutoff_date2 = (datetime.now(JST) - timedelta(days=90)).strftime("%Y-%m-%d")
+            cursor.execute("DELETE FROM usage_log WHERE date < ?", (cutoff_date2,))
 
             conn.commit()
             conn.close()
@@ -377,61 +433,43 @@ class AkaneBot(commands.Bot):
             conn = sqlite3.connect(self.config.DATABASE_NAME)
             cursor = conn.cursor()
 
-            # 今日のアクティブユーザー数
-            today = datetime.now(JST).strftime('%Y-%m-%d')
-            cursor.execute('SELECT COUNT(DISTINCT user_id) FROM usage_log WHERE date = ?', (today,))
+            today = datetime.now(JST).strftime("%Y-%m-%d")
+            cursor.execute(
+                "SELECT COUNT(DISTINCT user_id) FROM usage_log WHERE date = ?",
+                (today,),
+            )
             active_users_today = cursor.fetchone()[0]
-
             conn.close()
 
-            # アクティビティ更新
             activity = discord.Activity(
                 type=discord.ActivityType.listening,
-                name=f"表現の自由について♪ (今日: {active_users_today}人)"
+                name=f"表現の自由について♪ (今日: {active_users_today}人)",
             )
             await self.change_presence(activity=activity)
-
         except Exception as e:
             logger.error(f"統計更新エラー: {e}")
 
-    async def on_ready(self):
-        """起動完了時の処理"""
-        logger.info(f'茜ちゃんが起動したで〜！ {self.user}')
-        logger.info(f'参加サーバー数: {len(self.guilds)}')
-        logger.info(f'GPTモデル使用モード: {self.config.GPT_MODEL}')
+    # ---- メッセージ処理 ----
 
-        activity = discord.Activity(
-            type=discord.ActivityType.listening,
-            name="表現の自由について♪"
-        )
-        await self.change_presence(activity=activity)
-
-        print("=" * 50)
-        print("🌸 表自派茜ボット起動完了！")
-        print(f"📊 起動時刻: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"🤖 Discord.py: {discord.__version__}")
-        print(f"🧠 OpenAI model: {self.config.GPT_MODEL}")
-        print("=" * 50)
-
-    async def on_message(self, message):
+    async def on_message(self, message: discord.Message):
         if message.author.bot:
             return
 
-        # DM または メンションされた場合のみ反応
+        # DM または メンションされたときだけ反応
         if isinstance(message.channel, discord.DMChannel) or self.user in message.mentions:
             await self.handle_chat_message(message)
 
         await self.process_commands(message)
 
-    async def handle_chat_message(self, message):
-        """メッセージ処理"""
+    async def handle_chat_message(self, message: discord.Message):
+        """メインのメッセージ処理"""
         start_time = datetime.now()
         user_id = str(message.author.id)
         username = message.author.display_name
 
         # 統計更新
-        self.stats['total_messages'] += 1
-        self.stats['unique_users'].add(user_id)
+        self.stats["total_messages"] += 1
+        self.stats["unique_users"].add(user_id)
 
         # 使用制限チェック
         usage_today = self.db.get_user_usage_today(user_id, username)
@@ -439,48 +477,54 @@ class AkaneBot(commands.Bot):
             await self.send_limit_reached_message(message, usage_today)
             return
 
-        # 使用回数をインクリメント
         new_usage = self.db.increment_user_usage(user_id, username)
 
         try:
             async with message.channel.typing():
-                # メッセージ前処理
                 user_message = self.preprocess_message(message.content)
 
-                # 表現規制質問の検出
+                # 表現規制質問かどうか判定
                 is_regulation = self.analyzer.detect_regulation_question(user_message)
 
                 if is_regulation:
-                    response = await self.handle_regulation_analysis(user_message, user_id, username)
-                    self.stats['regulation_analyses'] += 1
+                    response = await self.handle_regulation_analysis(
+                        user_message, user_id, username
+                    )
+                    self.stats["regulation_analyses"] += 1
                 else:
-                    response = await self.handle_normal_chat(user_message, user_id, username)
+                    response = await self.handle_normal_chat(
+                        user_message, user_id, username
+                    )
 
-                # レスポンス送信
+                # 返信
                 await self.send_response(message, response, is_regulation)
 
-                # 会話履歴保存
-                response_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
-                self.db.save_conversation(user_id, user_message, response, is_regulation, response_time_ms)
+                # 履歴保存
+                response_time_ms = int(
+                    (datetime.now() - start_time).total_seconds() * 1000
+                )
+                self.db.save_conversation(
+                    user_id, user_message, response, is_regulation, response_time_ms
+                )
 
                 # 使用状況通知
                 if new_usage % 20 == 0 or new_usage >= 90:
                     await self.send_usage_notification(message, new_usage)
 
         except Exception as e:
-            self.stats['errors'] += 1
+            self.stats["errors"] += 1
             logger.error(f"メッセージ処理エラー: {e}")
             await self.send_error_message(message)
 
     def preprocess_message(self, content: str) -> str:
         """メッセージ前処理"""
-        # メンション除去
-        content = re.sub(r'<@!?\d+>', '', content)
-        # 余分な空白除去
-        content = re.sub(r'\s+', ' ', content).strip()
+        content = re.sub(r"<@!?\d+>", "", content)  # メンション除去
+        content = re.sub(r"\s+", " ", content).strip()
         return content
 
-    async def handle_regulation_analysis(self, message: str, user_id: str, username: str) -> str:
+    async def handle_regulation_analysis(
+        self, message: str, user_id: str, username: str
+    ) -> str:
         """表現規制分析処理"""
         target = self.analyzer.extract_regulation_target(message)
         prompt = self.analyzer.create_analysis_prompt(message, target)
@@ -490,20 +534,14 @@ class AkaneBot(commands.Bot):
                 system_prompt=prompt,
                 user_message=message,
                 max_tokens=self.config.REGULATION_ANALYSIS_MAX_TOKENS,
-                # 推論モデルの場合は少し深めに
-                reasoning_effort="medium",
-                temperature=0.6
             )
 
-            # 分析結果をパース（簡易）
             scores = self.extract_scores_from_response(response)
             judgment = self.extract_judgment_from_response(response)
-
-            # 分析結果を保存
-            self.db.save_regulation_analysis(user_id, target, message, scores, judgment, response)
-
+            self.db.save_regulation_analysis(
+                user_id, target, message, scores, judgment, response
+            )
             return response
-
         except Exception as e:
             logger.error(f"表現規制分析エラー: {e}")
             return (
@@ -511,7 +549,9 @@ class AkaneBot(commands.Bot):
                 "表現規制については茜もいつも真剣に考えとるから、また聞いてくれたら嬉しいで♪"
             )
 
-    async def handle_normal_chat(self, message: str, user_id: str, username: str) -> str:
+    async def handle_normal_chat(
+        self, message: str, user_id: str, username: str
+    ) -> str:
         """通常チャット処理"""
         system_prompt = self.create_character_prompt(username)
 
@@ -520,54 +560,58 @@ class AkaneBot(commands.Bot):
                 system_prompt=system_prompt,
                 user_message=message,
                 max_tokens=self.config.NORMAL_CHAT_MAX_TOKENS,
-                reasoning_effort="low",
-                temperature=0.8
             )
         except Exception as e:
             logger.error(f"通常チャットエラー: {e}")
             return "ちょっと調子悪いみたいや〜😅 もう一回試してくれる？"
 
-async def call_gpt_with_retry(
-    self,
-    system_prompt: str,
-    user_message: str,
-    max_tokens: int = 500,
-    reasoning_effort: str = "none",
-    temperature: float = 0.8,
-    max_retries: int = 3
-) -> str:
-    """GPT-5.1 対応版：max_completion_tokens を使用"""
-    for attempt in range(max_retries):
-        try:
-            response = client.chat.completions.create(
-                model=self.config.GPT_MODEL,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user",   "content": user_message}
-                ],
-                # ここが超重要！！！！！
-                max_completion_tokens = max_tokens,
-                reasoning_effort      = reasoning_effort,
-                # temperature などはモデルによっては無視/エラーになるので、
-                # 一旦コメントアウトしてもよい
-                # temperature          = temperature,
-            )
-            return response.choices[0].message.content
+    async def call_gpt_with_retry(
+        self,
+        system_prompt: str,
+        user_message: str,
+        max_tokens: int = 500,
+        max_retries: int = 3,
+    ) -> str:
+        """
+        GPT 呼び出し（Responses API 使用版）
 
-        except Exception as e:
-            logger.warning(f"GPT呼び出し失敗 (試行 {attempt+1}/{max_retries}): {e}")
-            if attempt == max_retries - 1:
-                raise
-            await asyncio.sleep(2 ** attempt)
+        ★ chat.completions ではなく responses.create を使うことで、
+        'max_tokens' / 'max_completion_tokens' 問題を完全回避します。
+        """
+        for attempt in range(max_retries):
+            try:
+                # Responses API は max_output_tokens を使う
+                response = client.responses.create(
+                    model=self.config.GPT_MODEL,
+                    input=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message},
+                    ],
+                    max_output_tokens=max_tokens,
+                )
+                # 最終テキストは output[0].content[0].text から取れる
+                try:
+                    return response.output[0].content[0].text
+                except Exception:
+                    # 念のためのフォールバック
+                    return str(response)
 
-    raise RuntimeError("GPT 呼び出しが全試行とも失敗しました")
+            except Exception as e:
+                logger.warning(
+                    f"GPT呼び出し失敗 (試行 {attempt + 1}/{max_retries}): {e}"
+                )
+                if attempt == max_retries - 1:
+                    raise
+                await asyncio.sleep(2**attempt)
+
+        raise RuntimeError("GPT 呼び出しが全試行とも失敗しました")
 
     def create_character_prompt(self, username: str) -> str:
         """キャラクタープロンプト作成"""
         return f"""あなたは「表自派茜」という名前の明るく社交的な関西弁の女子高生です。
 
 ## 詳細キャラクター設定
-- 名前: 表自派茜（ひょうじはあかね）
+- 名前: 表自派茜（ひょうじしあかね）
 - 年齢: 16歳の高校2年生
 - 性格: 明るく好奇心旺盛、社交的でフレンドリー、表現の自由に情熱的
 - 一人称: 茜
@@ -594,58 +638,53 @@ async def call_gpt_with_retry(
 今日学んだこと: みんなとの対話から新しい視点を得ること"""
 
     def extract_scores_from_response(self, response: str) -> Dict[str, int]:
-        """分析スコア抽出（簡易版）"""
-        scores = {'legal': 3, 'purpose': 3, 'proportion': 3}
-
+        """分析スコア抽出（かなり簡易版）"""
+        scores = {"legal": 3, "purpose": 3, "proportion": 3}
         patterns = [
-            (r'法的根拠.*?([1-5])点', 'legal'),
-            (r'正当.*?目的.*?([1-5])点', 'purpose'),
-            (r'比例性.*?([1-5])点', 'proportion'),
+            (r"法的根拠.*?([1-5])点", "legal"),
+            (r"正当.*?目的.*?([1-5])点", "purpose"),
+            (r"比例性.*?([1-5])点", "proportion"),
         ]
-
         for pattern, key in patterns:
             match = re.search(pattern, response)
             if match:
                 scores[key] = int(match.group(1))
-
         return scores
 
     def extract_judgment_from_response(self, response: str) -> str:
         """判断結果抽出"""
-        if '妥当' in response:
-            return '妥当'
-        elif '問題' in response:
-            return '問題あり'
+        if "妥当" in response:
+            return "妥当"
+        elif "問題" in response:
+            return "問題あり"
         else:
-            return '要検討'
+            return "要検討"
 
-    async def send_response(self, message, response: str, is_regulation: bool = False):
+    async def send_response(
+        self, message: discord.Message, response: str, is_regulation: bool = False
+    ):
         """レスポンス送信"""
         if is_regulation:
-            # 表現規制分析の場合は特別な embed
             embed = discord.Embed(
                 title="📋 表現規制審査結果",
-                color=0xffd700,
+                color=0xFFD700,
                 timestamp=datetime.now(JST),
             )
-
             if len(response) <= 1024:
                 embed.add_field(name="茜の詳細分析", value=response, inline=False)
             else:
                 parts = self.split_text_smartly(response, 1024)
                 for i, part in enumerate(parts[:3]):
-                    name = "茜の詳細分析" if i == 0 else f"続き ({i + 1})"
+                    name = "茜の詳細分析" if i == 0 else f"続き ({i+1})"
                     embed.add_field(name=name, value=part, inline=False)
 
             embed.set_footer(text="表現の自由は民主主義の基盤やからね！")
             await message.reply(embed=embed)
 
-            # それでも長い場合はテキストで続き送信
             if len(response) > 3072:
                 remaining = response[3072:]
                 await message.channel.send(f"**続き:**\n{remaining}")
         else:
-            # 通常チャット
             if len(response) <= self.config.MAX_RESPONSE_LENGTH:
                 await message.reply(response)
             else:
@@ -661,11 +700,9 @@ async def call_gpt_with_retry(
         parts: List[str] = []
         current = ""
 
-        sentences = re.split(r'([。！？\n])', text)
-
+        sentences = re.split(r"([。！？\n])", text)
         for i in range(0, len(sentences), 2):
             sentence = sentences[i] + (sentences[i + 1] if i + 1 < len(sentences) else "")
-
             if len(current + sentence) <= max_length:
                 current += sentence
             else:
@@ -678,7 +715,7 @@ async def call_gpt_with_retry(
 
         return parts
 
-    async def send_limit_reached_message(self, message, usage_count: int):
+    async def send_limit_reached_message(self, message: discord.Message, usage_count: int):
         """制限到達メッセージ"""
         remaining_time = self.get_time_until_reset()
         embed = discord.Embed(
@@ -689,7 +726,7 @@ async def call_gpt_with_retry(
                 f"⏰ リセットまで: {remaining_time}\n"
                 f"📊 今日の使用: {usage_count}/{self.config.DAILY_MESSAGE_LIMIT}"
             ),
-            color=0xff9999,
+            color=0xFF9999,
             timestamp=datetime.now(JST),
         )
         embed.add_field(
@@ -702,36 +739,32 @@ async def call_gpt_with_retry(
         )
         await message.reply(embed=embed)
 
-    async def send_usage_notification(self, message, usage_count: int):
+    async def send_usage_notification(self, message: discord.Message, usage_count: int):
         """使用状況通知"""
         remaining = self.config.DAILY_MESSAGE_LIMIT - usage_count
 
         if remaining <= 10:
-            color = 0xff6b6b  # 赤
+            color = 0xFF6B6B
             icon = "⚠️"
             msg = f"あと{remaining}回で今日の制限やで〜"
         elif remaining <= 30:
-            color = 0xffa500  # オレンジ
+            color = 0xFFA500
             icon = "📊"
             msg = f"今日はあと{remaining}回お話しできるで〜"
         else:
-            color = 0x87ceeb  # 水色
+            color = 0x87CEEB
             icon = "📈"
             msg = f"今日はあと{remaining}回お話しできるで〜"
 
-        embed = discord.Embed(
-            title=f"{icon} 使用状況",
-            description=msg,
-            color=color,
-        )
+        embed = discord.Embed(title=f"{icon} 使用状況", description=msg, color=color)
         await message.channel.send(embed=embed)
 
-    async def send_error_message(self, message):
+    async def send_error_message(self, message: discord.Message):
         """エラーメッセージ"""
         embed = discord.Embed(
             title="😅 ちょっと困ったで〜",
             description="なんか調子悪いみたいや。少し待ってから、もう一回試してくれる？",
-            color=0xff6b6b,
+            color=0xFF6B6B,
             timestamp=datetime.now(JST),
         )
         embed.add_field(
@@ -748,7 +781,9 @@ async def call_gpt_with_retry(
     def get_time_until_reset(self) -> str:
         """リセット時間計算"""
         now = datetime.now(JST)
-        tomorrow = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        tomorrow = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(
+            days=1
+        )
         remaining = tomorrow - now
 
         hours = remaining.seconds // 3600
@@ -756,8 +791,10 @@ async def call_gpt_with_retry(
 
         return f"{hours}時間{minutes}分"
 
-    @commands.command(name='usage')
-    async def check_usage(self, ctx):
+    # ---- コマンド ----
+
+    @commands.command(name="usage")
+    async def check_usage(self, ctx: commands.Context):
         """使用状況確認コマンド"""
         user_id = str(ctx.author.id)
         username = ctx.author.display_name
@@ -766,11 +803,10 @@ async def call_gpt_with_retry(
 
         embed = discord.Embed(
             title="📊 茜ちゃんとの会話記録",
-            color=0x87ceeb,
+            color=0x87CEEB,
             timestamp=datetime.now(JST),
         )
 
-        # プログレスバー作成
         progress = usage_today / self.config.DAILY_MESSAGE_LIMIT
         bar_length = 20
         filled_length = int(bar_length * progress)
@@ -781,7 +817,6 @@ async def call_gpt_with_retry(
             value=f"```\n{bar} {usage_today}/{self.config.DAILY_MESSAGE_LIMIT}\n```",
             inline=False,
         )
-
         embed.add_field(name="使用済み", value=f"{usage_today}回", inline=True)
         embed.add_field(name="残り回数", value=f"{remaining}回", inline=True)
         embed.add_field(name="リセット時刻", value="毎日午前0時（JST）", inline=True)
@@ -802,35 +837,53 @@ async def call_gpt_with_retry(
         embed.set_footer(text=f"リセットまで: {self.get_time_until_reset()}")
         await ctx.send(embed=embed)
 
-    @commands.command(name='stats')
-    async def show_stats(self, ctx):
+    @commands.command(name="stats")
+    async def show_stats(self, ctx: commands.Context):
         """統計情報表示"""
         uptime = datetime.now(JST) - self.start_time
-        uptime_str = str(uptime).split('.')[0]
+        uptime_str = str(uptime).split(".")[0]
 
         embed = discord.Embed(
             title="📈 茜ちゃんの統計情報",
-            color=0xffd700,
+            color=0xFFD700,
             timestamp=datetime.now(JST),
         )
 
         embed.add_field(name="稼働時間", value=uptime_str, inline=True)
-        embed.add_field(name="総メッセージ数", value=f"{self.stats['total_messages']:,}件", inline=True)
-        embed.add_field(name="表現規制分析", value=f"{self.stats['regulation_analyses']:,}件", inline=True)
-        embed.add_field(name="ユニークユーザー", value=f"{len(self.stats['unique_users']):,}人", inline=True)
-        embed.add_field(name="エラー数", value=f"{self.stats['errors']:,}件", inline=True)
-        embed.add_field(name="参加サーバー", value=f"{len(self.guilds):,}個", inline=True)
+        embed.add_field(
+            name="総メッセージ数",
+            value=f"{self.stats['total_messages']:,}件",
+            inline=True,
+        )
+        embed.add_field(
+            name="表現規制分析",
+            value=f"{self.stats['regulation_analyses']:,}件",
+            inline=True,
+        )
+        embed.add_field(
+            name="ユニークユーザー",
+            value=f"{len(self.stats['unique_users']):,}人",
+            inline=True,
+        )
+        embed.add_field(
+            name="エラー数", value=f"{self.stats['errors']:,}件", inline=True
+        )
+        embed.add_field(
+            name="参加サーバー",
+            value=f"{len(self.guilds):,}個",
+            inline=True,
+        )
 
         embed.set_footer(text="表現の自由を守るため、今日も頑張ってるで〜♪")
         await ctx.send(embed=embed)
 
-    @commands.command(name='help')
-    async def help_command(self, ctx):
+    @commands.command(name="help")
+    async def help_command(self, ctx: commands.Context):
         """ヘルプコマンド"""
         embed = discord.Embed(
             title="🌸 表自派茜の完全ガイド",
             description="関西弁で話す表現の自由の専門家、茜やで〜！",
-            color=0xffb3d9,
+            color=0xFFB3D9,
             timestamp=datetime.now(JST),
         )
 
@@ -889,20 +942,18 @@ async def call_gpt_with_retry(
         await ctx.send(embed=embed)
 
 
-# メイン実行部分
-if __name__ == '__main__':
-    # 環境変数チェック
-    required_env = ['DISCORD_TOKEN', 'OPENAI_API_KEY']
-    missing_env = [env for env in required_env if not os.getenv(env)]
+# ========== メイン実行部分 ==========
 
+if __name__ == "__main__":
+    required_env = ["DISCORD_TOKEN", "OPENAI_API_KEY"]
+    missing_env = [env for env in required_env if not os.getenv(env)]
     if missing_env:
         logger.error(f"必要な環境変数が設定されていません: {missing_env}")
-        exit(1)
+        raise SystemExit(1)
 
     bot = AkaneBot()
-
     try:
-        bot.run(os.getenv('DISCORD_TOKEN'))
+        bot.run(os.getenv("DISCORD_TOKEN"))
     except discord.LoginFailure:
         logger.error("無効なDiscordトークンです。DISCORD_TOKENを確認してください。")
     except Exception as e:
