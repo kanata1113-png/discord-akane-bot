@@ -527,61 +527,40 @@ class AkaneBot(commands.Bot):
             logger.error(f"通常チャットエラー: {e}")
             return "ちょっと調子悪いみたいや〜😅 もう一回試してくれる？"
 
-    async def call_gpt_with_retry(
-        self,
-        system_prompt: str,
-        user_message: str,
-        max_tokens: int = 500,
-        reasoning_effort: Optional[str] = None,
-        temperature: float = 0.8,
-        max_retries: int = 3
-    ) -> str:
-        """
-        GPT 呼び出し（リトライ付き）
+async def call_gpt_with_retry(
+    self,
+    system_prompt: str,
+    user_message: str,
+    max_tokens: int = 500,
+    reasoning_effort: str = "none",
+    temperature: float = 0.8,
+    max_retries: int = 3
+) -> str:
+    """GPT-5.1 対応版：max_completion_tokens を使用"""
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model=self.config.GPT_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user",   "content": user_message}
+                ],
+                # ここが超重要！！！！！
+                max_completion_tokens = max_tokens,
+                reasoning_effort      = reasoning_effort,
+                # temperature などはモデルによっては無視/エラーになるので、
+                # 一旦コメントアウトしてもよい
+                # temperature          = temperature,
+            )
+            return response.choices[0].message.content
 
-        - gpt-5.1 / o1 / gpt-4.1 など「推論モデル」の場合:
-            max_completion_tokens と reasoning_effort を使用
-        - gpt-4o など従来モデルの場合:
-            max_tokens, temperature, frequency_penalty, presence_penalty を使用
-        """
-        model = self.config.GPT_MODEL
-        # 非厳密だが、モデル名から「推論モデル」っぽいかを判定する
-        reasoning_like_prefixes = ("o1", "o3", "o4", "gpt-4.1", "gpt-5")
-        is_reasoning_model = any(prefix in model for prefix in reasoning_like_prefixes)
+        except Exception as e:
+            logger.warning(f"GPT呼び出し失敗 (試行 {attempt+1}/{max_retries}): {e}")
+            if attempt == max_retries - 1:
+                raise
+            await asyncio.sleep(2 ** attempt)
 
-        for attempt in range(max_retries):
-            try:
-                params = {
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_message},
-                    ],
-                }
-
-                if is_reasoning_model:
-                    # 🔹 推論モデル用パラメータ
-                    params["max_completion_tokens"] = max_tokens
-                    if reasoning_effort is not None:
-                        params["reasoning_effort"] = reasoning_effort
-                    # temperature / penalty 系は多くの推論モデルで未サポートなので指定しない
-                else:
-                    # 🔹 従来モデル用パラメータ
-                    params["max_tokens"] = max_tokens
-                    params["temperature"] = temperature
-                    params["frequency_penalty"] = 0.1
-                    params["presence_penalty"] = 0.1
-
-                response = client.chat.completions.create(**params)
-                return response.choices[0].message.content
-
-            except Exception as e:
-                logger.warning(f"GPT呼び出し失敗 (試行 {attempt + 1}/{max_retries}): {e}")
-                if attempt == max_retries - 1:
-                    raise
-                await asyncio.sleep(2 ** attempt)  # 指数バックオフ
-
-        raise RuntimeError("GPT 呼び出しが全試行とも失敗しました")
+    raise RuntimeError("GPT 呼び出しが全試行とも失敗しました")
 
     def create_character_prompt(self, username: str) -> str:
         """キャラクタープロンプト作成"""
