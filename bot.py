@@ -5,7 +5,7 @@ import openai
 from openai import OpenAI
 import os
 import asyncio
-import aiosqlite
+import aiosqlite # 非同期DB処理（Botの動作停止を防ぐため必須）
 import logging
 from datetime import datetime, timedelta
 import pytz
@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 # =========================
 load_dotenv()
 
+# Railwayのログに見やすく出力
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -29,7 +30,7 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 class OpenAIConfig:
-    # ★ここに gpt-5.1 を指定
+    # ★ご指定の GPT-5.1 を設定
     GPT_MODEL = "gpt-5.1"
 
 if OPENAI_API_KEY:
@@ -47,10 +48,11 @@ class BotConfig:
     DAILY_MESSAGE_LIMIT = 100
     MAX_RESPONSE_LENGTH = 2000
     
+    # Railway対応: Volume (/data) があればそこを使う
     if os.path.exists("/data"):
-        DB_NAME = '/data/akane_mix.db'
+        DB_NAME = '/data/akane_2025_fixed.db'
     else:
-        DB_NAME = 'akane_mix.db'
+        DB_NAME = 'akane_2025_fixed.db'
 
     REGULATION_ANALYSIS_MAX_TOKENS = 1200
     NORMAL_CHAT_MAX_TOKENS = 600
@@ -69,7 +71,7 @@ class BotConfig:
     ]
 
 # =========================
-# 2. データベース管理
+# 2. データベース管理 (Async対応)
 # =========================
 class DatabaseManager:
     def __init__(self, db_name: str):
@@ -77,11 +79,12 @@ class DatabaseManager:
 
     async def init_database(self):
         async with aiosqlite.connect(self.db_name) as db:
-            # バックアップコード由来
+            # 会話ログ・分析用テーブル
             await db.execute('''CREATE TABLE IF NOT EXISTS usage_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, username TEXT, date TEXT, count INTEGER DEFAULT 0, last_message_at TEXT, UNIQUE(user_id, date))''')
             await db.execute('''CREATE TABLE IF NOT EXISTS conversation_history (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, message TEXT, response TEXT, is_regulation_analysis BOOLEAN, timestamp TEXT, response_time_ms INTEGER)''')
             await db.execute('''CREATE TABLE IF NOT EXISTS regulation_analysis (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, regulation_target TEXT, question TEXT, legal_basis_score INTEGER, legitimate_purpose_score INTEGER, proportionality_score INTEGER, overall_judgment TEXT, detailed_analysis TEXT, timestamp TEXT)''')
-            # 汎用機能由来
+            
+            # 汎用Bot機能用テーブル (設定・XP)
             await db.execute('''CREATE TABLE IF NOT EXISTS settings (guild_id INTEGER PRIMARY KEY, autorole_id INTEGER, welcome_channel_id INTEGER)''')
             await db.execute('''CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, xp INTEGER DEFAULT 0, level INTEGER DEFAULT 1)''')
             await db.commit()
@@ -179,6 +182,12 @@ class AkaneBot(commands.Bot):
         self.start_time = datetime.now(JST)
         self.stats = {'total_messages': 0, 'regulation_analyses': 0, 'unique_users': set(), 'errors': 0}
 
+    # ★モデル判定ロジック
+    def is_reasoning_model(self) -> bool:
+        m = self.config.GPT_MODEL.lower()
+        # "gpt-5" または "o1" が含まれていたら推論モデルとみなす
+        return "gpt-5" in m or "o1" in m or "reasoning" in m
+
     async def setup_hook(self):
         await self.db.init_database()
         self.cleanup_old_data.start()
@@ -220,8 +229,10 @@ class AkaneBot(commands.Bot):
 
     async def on_message(self, message):
         if message.author.bot: return
+        # AIチャット
         if isinstance(message.channel, discord.DMChannel) or self.user in message.mentions:
             await self.handle_chat_message(message)
+        # 汎用機能: XP
         if message.guild:
             await self.handle_xp(message)
         await self.process_commands(message)
@@ -237,4 +248,234 @@ class AkaneBot(commands.Bot):
                     xp = 0
                     level += 1
                     await message.channel.send(f"🎉 {message.author.mention} Level Up! -> {level}")
-                await db.execute("
+                await db.execute("UPDATE users SET xp = ?, level = ? WHERE user_id = ?", (xp, level, message.author.id))
+            else:
+                await db.execute("INSERT INTO users (user_id, xp, level) VALUES (?, ?, ?)", (message.author.id, 10, 1))
+            await db.commit()
+
+    async def handle_chat_message(self, message):
+        start_time = datetime.now()
+        user_id = str(message.author.id)
+        username = message.author.display_name
+        self.stats['total_messages'] += 1
+        self.stats['unique_users'].add(user_id)
+
+        usage = await self.db.get_user_usage_today(user_id, username)
+        if usage >= self.config.DAILY_MESSAGE_LIMIT:
+            await message.reply("今日の会話回数は終わりや〜。また明日な！")
+            return
+        await self.db.increment_user_usage(user_id, username)
+
+        try:
+            async with message.channel.typing():
+                content = re.sub(r'<@!?\d+>', '', message.content).strip()
+                is_reg = self.analyzer.detect_regulation_question(content)
+
+                if is_reg:
+                    response = await self.handle_regulation_analysis(content, user_id, username)
+                    self.stats['regulation_analyses'] += 1
+                else:
+                    response = await self.handle_normal_chat(content, user_id, username)
+
+                await self.send_response(message, response, is_reg)
+                
+                ms = int((datetime.now() - start_time).total_seconds() * 1000)
+                await self.db.save_conversation(user_id, content, response, is_reg, ms)
+
+        except Exception as e:
+            self.stats['errors'] += 1
+            logger.error(f"Chat Error: {e}")
+            await message.reply("ごめん、エラーが出てもうたわ💦")
+
+    # ---------- GPT 呼び出し処理 ----------
+
+    async def handle_regulation_analysis(self, message: str, user_id: str, username: str) -> str:
+        target = self.analyzer.extract_regulation_target(message)
+        prompt = self.analyzer.create_analysis_prompt(message, target)
+        
+        # 簡易スコア
+        scores = {'legal': 3, 'purpose': 3, 'proportion': 3}
+        judgment = "要検討"
+        
+        response = await self.call_gpt_with_retry(
+            system_prompt=prompt,
+            user_message=message,
+            max_tokens=self.config.REGULATION_ANALYSIS_MAX_TOKENS,
+            temperature=0.6,
+            reasoning_effort="medium"
+        )
+        
+        await self.db.save_regulation_analysis(user_id, target, message, scores, judgment, response)
+        return response
+
+    async def handle_normal_chat(self, message: str, user_id: str, username: str) -> str:
+        prompt = f"あなたは「表自派茜」という関西弁の女子高生です。ユーザー名: {username}。ユーザーに共感し、明るく振る舞ってください。"
+        return await self.call_gpt_with_retry(
+            system_prompt=prompt,
+            user_message=message,
+            max_tokens=self.config.NORMAL_CHAT_MAX_TOKENS,
+            temperature=0.8,
+            reasoning_effort="medium"
+        )
+
+    # ★最重要修正: ここでエラーを完全に回避します
+    async def call_gpt_with_retry(
+        self, system_prompt: str, user_message: str, max_tokens: int = 500,
+        temperature: float = 0.8, reasoning_effort: str = "medium", max_retries: int = 3
+    ) -> str:
+        
+        # モデル名を確認
+        is_reasoning = self.is_reasoning_model() # gpt-5 or o1
+
+        for attempt in range(max_retries):
+            try:
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message}
+                ]
+                params = {
+                    "model": self.config.GPT_MODEL,
+                    "messages": messages,
+                }
+
+                if is_reasoning:
+                    # ★ GPT-5.1 の場合: temperature を絶対に含めない
+                    # max_tokens ではなく max_completion_tokens を使う場合もありますが
+                    # エラーの直接原因は temperature なので、まずはこれを除去
+                    params["max_completion_tokens"] = max_tokens
+                    params["reasoning_effort"] = reasoning_effort
+                    
+                    # ここに temperature を書かないことが修正の全てです
+                else:
+                    # 従来モデル (gpt-4oなど)
+                    params["max_tokens"] = max_tokens
+                    params["temperature"] = temperature
+                    params["frequency_penalty"] = 0.1
+                    params["presence_penalty"] = 0.1
+
+                loop = asyncio.get_running_loop()
+                response = await loop.run_in_executor(None, lambda: client.chat.completions.create(**params))
+                return response.choices[0].message.content
+
+            except Exception as e:
+                logger.warning(f"GPT Retry {attempt+1}: {e}")
+                if attempt == max_retries - 1:
+                    logger.error(f"Failed to call OpenAI: {e}")
+                    return "あかん、APIエラーや... 設定を見直してな。"
+                await asyncio.sleep(2 ** attempt)
+
+    async def send_response(self, message, response: str, is_regulation: bool = False):
+        if is_regulation:
+            embed = discord.Embed(title="📋 茜の分析結果", color=0xffd700, timestamp=datetime.now(JST))
+            if len(response) > 4000: response = response[:4000] + "..."
+            embed.description = response
+            await message.reply(embed=embed)
+        else:
+            if len(response) > 2000:
+                await message.channel.send(response[:2000])
+                await message.channel.send(response[2000:])
+            else:
+                await message.reply(response)
+
+# =========================
+# 5. 汎用機能 (View & Command)
+# =========================
+class ScheduleView(discord.ui.View):
+    def __init__(self): super().__init__(timeout=None)
+    async def update(self, i, status):
+        embed = i.message.embeds[0]
+        user = i.user
+        new_fields = []
+        target = f"【{status}】"
+        for field in embed.fields:
+            lines = [l for l in field.value.split('\n') if user.mention not in l and "なし" not in l]
+            if field.name == target: lines.append(f"• {user.mention}")
+            val = '\n'.join(lines) if lines else "なし"
+            new_fields.append((field.name, val))
+        new_embed = discord.Embed(title=embed.title, description=embed.description, color=embed.color)
+        new_embed.set_footer(text=embed.footer.text)
+        new_embed.timestamp = embed.timestamp
+        for n, v in new_fields: new_embed.add_field(name=n, value=v)
+        await i.response.edit_message(embed=new_embed)
+    @discord.ui.button(label="参加", style=discord.ButtonStyle.success, custom_id="sch_join")
+    async def join(self, i, b): await self.update(i, "参加")
+    @discord.ui.button(label="不参加", style=discord.ButtonStyle.danger, custom_id="sch_lv")
+    async def leave(self, i, b): await self.update(i, "不参加")
+    @discord.ui.button(label="保留", style=discord.ButtonStyle.secondary, custom_id="sch_my")
+    async def maybe(self, i, b): await self.update(i, "保留")
+
+class TicketCreateView(discord.ui.View):
+    def __init__(self): super().__init__(timeout=None)
+    @discord.ui.button(label="問い合わせ", style=discord.ButtonStyle.primary, emoji="📩", custom_id="tk_cr")
+    async def create(self, i, b):
+        ch = await i.guild.create_text_channel(f"ticket-{i.user.name}")
+        await i.response.send_message(f"作成したで: {ch.mention}", ephemeral=True)
+        await ch.send(f"{i.user.mention} 内容をどうぞ", view=TicketCloseView())
+
+class TicketCloseView(discord.ui.View):
+    def __init__(self): super().__init__(timeout=None)
+    @discord.ui.button(label="解決・閉じる", style=discord.ButtonStyle.danger)
+    async def close(self, i, b):
+        await i.response.send_message("ほな閉じるで〜")
+        await asyncio.sleep(3)
+        await i.channel.delete()
+
+# =========================
+# 6. コマンド登録
+# =========================
+bot = AkaneBot()
+
+@bot.tree.command(name="schedule", description="スケジュール作成")
+async def schedule(interaction: discord.Interaction, title: str, date: str, time: str):
+    try:
+        dt = datetime.strptime(f"{date} {time}", "%Y/%m/%d %H:%M")
+        ts = int(dt.timestamp())
+        embed = discord.Embed(title=f"📅 {title}", description=f"日時: <t:{ts}:F>", color=discord.Color.green())
+        for s in ["参加", "不参加", "保留"]: embed.add_field(name=f"【{s}】", value="なし")
+        embed.set_footer(text=f"作成者: {interaction.user.display_name}")
+        await interaction.response.send_message(embed=embed, view=ScheduleView())
+    except:
+        await interaction.response.send_message("日時は `YYYY/MM/DD` `HH:MM` で頼むわ！", ephemeral=True)
+
+@bot.tree.command(name="setup_ticket", description="[管理者] チケット設置")
+@app_commands.checks.has_permissions(administrator=True)
+async def setup_ticket(interaction):
+    await interaction.channel.send("📩 サポート窓口", view=TicketCreateView())
+    await interaction.response.send_message("設置完了", ephemeral=True)
+
+@bot.tree.command(name="poll", description="投票作成")
+async def poll(interaction, question: str, opt1: str, opt2: str):
+    embed = discord.Embed(title=f"📊 {question}", description=f"1️⃣ {opt1}\n2️⃣ {opt2}", color=discord.Color.gold())
+    msg = await interaction.channel.send(embed=embed)
+    await msg.add_reaction("1️⃣")
+    await msg.add_reaction("2️⃣")
+    await interaction.response.send_message("投票作成完了", ephemeral=True)
+
+@bot.command(name='stats')
+async def show_stats(ctx):
+    await ctx.send(f"総メッセージ: {bot.stats['total_messages']}, エラー: {bot.stats['errors']}")
+
+@bot.command(name='usage')
+async def check_usage(ctx):
+    usage = await bot.db.get_user_usage_today(str(ctx.author.id), ctx.author.display_name)
+    await ctx.send(f"今日の使用: {usage}回")
+
+@bot.event
+async def on_member_join(member):
+    async with aiosqlite.connect(bot.config.DB_NAME) as db:
+        c = await db.execute("SELECT welcome_channel_id FROM settings WHERE guild_id=?", (member.guild.id,))
+        row = await c.fetchone()
+        if row and row[0]: 
+            ch = member.guild.get_channel(row[0])
+            if ch: await ch.send(f"Welcome {member.mention}!")
+        c = await db.execute("SELECT autorole_id FROM settings WHERE guild_id=?", (member.guild.id,))
+        row = await c.fetchone()
+        if row and row[0]:
+            role = member.guild.get_role(row[0])
+            if role: await member.add_roles(role)
+
+if __name__ == '__main__':
+    if DISCORD_TOKEN:
+        bot.run(DISCORD_TOKEN)
+    else:
+        print("Error: DISCORD_TOKEN is missing")
