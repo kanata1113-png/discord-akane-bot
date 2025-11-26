@@ -18,7 +18,6 @@ from dotenv import load_dotenv
 # =========================
 load_dotenv()
 
-# Railway向けログ設定
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -30,9 +29,10 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 class OpenAIConfig:
-    # ユーザー指定のモデル (GPT-5.1など)
-    GPT_MODEL = "gpt-5.1" 
+    # ★あなたのコードに合わせて GPT-5.1 を指定
+    GPT_MODEL = "gpt-5.1"
 
+# Client初期化
 if OPENAI_API_KEY:
     client = OpenAI(api_key=OPENAI_API_KEY)
 else:
@@ -42,17 +42,17 @@ else:
 JST = pytz.timezone('Asia/Tokyo')
 
 # =========================
-# 1. Bot設定 & DBパス
+# 1. Bot設定
 # =========================
 class BotConfig:
     DAILY_MESSAGE_LIMIT = 100
     MAX_RESPONSE_LENGTH = 2000
     
-    # Railway対応: Volume (/data) があればそこを使う
+    # Railway対応: Volumeパスの自動判定
     if os.path.exists("/data"):
-        DB_NAME = '/data/akane_ultimate.db'
+        DB_NAME = '/data/akane_2025.db'
     else:
-        DB_NAME = 'akane_ultimate.db'
+        DB_NAME = 'akane_2025.db'
 
     REGULATION_ANALYSIS_MAX_TOKENS = 1200
     NORMAL_CHAT_MAX_TOKENS = 600
@@ -71,7 +71,7 @@ class BotConfig:
     ]
 
 # =========================
-# 2. データベース管理 (Async対応版)
+# 2. データベース管理 (統合版)
 # =========================
 class DatabaseManager:
     def __init__(self, db_name: str):
@@ -79,7 +79,7 @@ class DatabaseManager:
 
     async def init_database(self):
         async with aiosqlite.connect(self.db_name) as db:
-            # --- 提示コード由来のテーブル ---
+            # --- バックアップコード由来のテーブル ---
             await db.execute('''
                 CREATE TABLE IF NOT EXISTS usage_log (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -116,7 +116,7 @@ class DatabaseManager:
                     timestamp TEXT DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
-            # --- 汎用Bot機能用テーブル ---
+            # --- 汎用機能用の追加テーブル ---
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS settings (
                     guild_id INTEGER PRIMARY KEY,
@@ -134,17 +134,14 @@ class DatabaseManager:
             await db.commit()
         logger.info(f"データベース初期化完了: {self.db_name}")
 
+    # --- ユーザー使用制限 ---
     async def get_user_usage_today(self, user_id: str, username: str = None) -> int:
         async with aiosqlite.connect(self.db_name) as db:
             today = datetime.now(JST).strftime('%Y-%m-%d')
             cursor = await db.execute('SELECT count FROM usage_log WHERE user_id = ? AND date = ?', (user_id, today))
             result = await cursor.fetchone()
-
             if username and result:
-                await db.execute(
-                    'UPDATE usage_log SET username = ? WHERE user_id = ? AND date = ?',
-                    (username, user_id, today)
-                )
+                await db.execute('UPDATE usage_log SET username = ? WHERE user_id = ? AND date = ?', (username, user_id, today))
                 await db.commit()
             return result[0] if result else 0
 
@@ -153,47 +150,35 @@ class DatabaseManager:
             today = datetime.now(JST).strftime('%Y-%m-%d')
             now = datetime.now(JST)
             try:
-                await db.execute('''
-                    INSERT INTO usage_log (user_id, username, date, count, last_message_at)
-                    VALUES (?, ?, ?, 1, ?)
-                ''', (user_id, username, today, now.isoformat()))
+                await db.execute('INSERT INTO usage_log (user_id, username, date, count, last_message_at) VALUES (?, ?, ?, 1, ?)', 
+                                 (user_id, username, today, now.isoformat()))
                 new_count = 1
             except aiosqlite.IntegrityError:
-                await db.execute('''
-                    UPDATE usage_log
-                    SET count = count + 1, last_message_at = ?, username = COALESCE(?, username)
-                    WHERE user_id = ? AND date = ?
-                ''', (now.isoformat(), username, user_id, today))
+                await db.execute('UPDATE usage_log SET count = count + 1, last_message_at = ?, username = COALESCE(?, username) WHERE user_id = ? AND date = ?', 
+                                 (now.isoformat(), username, user_id, today))
                 cursor = await db.execute('SELECT count FROM usage_log WHERE user_id = ? AND date = ?', (user_id, today))
                 row = await cursor.fetchone()
                 new_count = row[0]
             await db.commit()
             return new_count
 
+    # --- ログ保存 ---
     async def save_conversation(self, user_id: str, message: str, response: str, is_regulation: bool, response_time_ms: int):
         async with aiosqlite.connect(self.db_name) as db:
             now = datetime.now(JST)
-            await db.execute('''
-                INSERT INTO conversation_history
-                (user_id, message, response, is_regulation_analysis, response_time_ms, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (user_id, message, response, is_regulation, response_time_ms, now.isoformat()))
+            await db.execute('INSERT INTO conversation_history (user_id, message, response, is_regulation_analysis, response_time_ms, timestamp) VALUES (?, ?, ?, ?, ?, ?)', 
+                             (user_id, message, response, is_regulation, response_time_ms, now.isoformat()))
             await db.commit()
 
     async def save_regulation_analysis(self, user_id: str, target: str, question: str, scores: Dict[str, int], judgment: str, analysis: str):
         async with aiosqlite.connect(self.db_name) as db:
             now = datetime.now(JST)
-            await db.execute('''
-                INSERT INTO regulation_analysis
-                (user_id, regulation_target, question,
-                 legal_basis_score, legitimate_purpose_score, proportionality_score,
-                 overall_judgment, detailed_analysis, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (user_id, target, question, scores.get('legal', 0), scores.get('purpose', 0), scores.get('proportion', 0), judgment, analysis, now.isoformat()))
+            await db.execute('INSERT INTO regulation_analysis (user_id, regulation_target, question, legal_basis_score, legitimate_purpose_score, proportionality_score, overall_judgment, detailed_analysis, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', 
+                             (user_id, target, question, scores.get('legal', 0), scores.get('purpose', 0), scores.get('proportion', 0), judgment, analysis, now.isoformat()))
             await db.commit()
 
 # =========================
-# 3. 表現規制分析ロジック
+# 3. 表現規制分析ロジック (バックアップ準拠)
 # =========================
 class ExpressionRegulationAnalyzer:
     def __init__(self):
@@ -203,8 +188,7 @@ class ExpressionRegulationAnalyzer:
         has_regulation = any(k in message for k in self.config.REGULATION_KEYWORDS)
         has_question = any(k in message for k in self.config.QUESTION_KEYWORDS)
         question_patterns = [r'.*？$', r'.*\?$', r'^.*ですか.*', r'^.*やろか.*', r'^.*かな.*']
-        has_question_pattern = any(re.search(p, message) for p in question_patterns)
-        return has_regulation and (has_question or has_question_pattern)
+        return has_regulation and (has_question or any(re.search(p, message) for p in question_patterns))
 
     def extract_regulation_target(self, message: str) -> str:
         patterns = [
@@ -244,7 +228,7 @@ class ExpressionRegulationAnalyzer:
 # =========================
 class AkaneBot(commands.Bot):
     def __init__(self):
-        intents = discord.Intents.all() # 汎用機能のためall推奨
+        intents = discord.Intents.all()
         super().__init__(command_prefix=['!', '！'], intents=intents, help_command=None)
 
         self.config = BotConfig()
@@ -259,8 +243,9 @@ class AkaneBot(commands.Bot):
             'errors': 0
         }
 
-    # モデル種別判定
+    # ★バックアップコードの核心部分: モデル判定ロジック
     def is_reasoning_model(self) -> bool:
+        """gpt-4.1 / gpt-5 / o1 / o3 系かどうかをざっくり判定"""
         m = self.config.GPT_MODEL.lower()
         return any(k in m for k in ["gpt-4.1", "gpt-5", "o1", "o3"])
 
@@ -268,8 +253,7 @@ class AkaneBot(commands.Bot):
         await self.db.init_database()
         self.cleanup_old_data.start()
         self.update_stats.start()
-        
-        # 汎用機能のView登録
+        # 汎用Viewの登録
         self.add_view(ScheduleView())
         self.add_view(TicketCreateView())
 
@@ -280,9 +264,8 @@ class AkaneBot(commands.Bot):
                 cutoff = (datetime.now(JST) - timedelta(days=30)).isoformat()
                 await db.execute('DELETE FROM conversation_history WHERE timestamp < ?', (cutoff,))
                 await db.commit()
-            logger.info("古いデータのクリーンアップ完了")
         except Exception as e:
-            logger.error(f"クリーンアップエラー: {e}")
+            logger.error(f"Cleanup Error: {e}")
 
     @tasks.loop(minutes=30)
     async def update_stats(self):
@@ -293,17 +276,13 @@ class AkaneBot(commands.Bot):
                 cursor = await db.execute('SELECT COUNT(DISTINCT user_id) FROM usage_log WHERE date = ?', (today,))
                 row = await cursor.fetchone()
                 active = row[0] if row else 0
-            
             await self.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name=f"表現の自由 ({active}人)"))
         except Exception as e:
-            logger.error(f"統計更新エラー: {e}")
+            logger.error(f"Stats Error: {e}")
 
     async def on_ready(self):
         logger.info(f'茜ちゃん起動！ {self.user}')
-        print("="*50)
         print(f"Model: {self.config.GPT_MODEL}")
-        print(f"DB: {self.config.DB_NAME}")
-        print("="*50)
         # スラッシュコマンド同期
         try:
             await self.tree.sync()
@@ -314,11 +293,11 @@ class AkaneBot(commands.Bot):
     async def on_message(self, message):
         if message.author.bot: return
 
-        # AIチャットロジック
+        # AIチャット
         if isinstance(message.channel, discord.DMChannel) or self.user in message.mentions:
             await self.handle_chat_message(message)
 
-        # 汎用Botロジック (XPシステム)
+        # 汎用機能: XP処理
         if message.guild:
             await self.handle_xp(message)
 
@@ -344,60 +323,53 @@ class AkaneBot(commands.Bot):
         start_time = datetime.now()
         user_id = str(message.author.id)
         username = message.author.display_name
-
         self.stats['total_messages'] += 1
         self.stats['unique_users'].add(user_id)
 
-        usage_today = await self.db.get_user_usage_today(user_id, username)
-        if usage_today >= self.config.DAILY_MESSAGE_LIMIT:
-            await self.send_limit_reached_message(message, usage_today)
+        usage = await self.db.get_user_usage_today(user_id, username)
+        if usage >= self.config.DAILY_MESSAGE_LIMIT:
+            await message.reply("今日の会話回数は終わりや〜。また明日な！")
             return
-
-        new_usage = await self.db.increment_user_usage(user_id, username)
+        await self.db.increment_user_usage(user_id, username)
 
         try:
             async with message.channel.typing():
-                user_message = self.preprocess_message(message.content)
-                is_regulation = self.analyzer.detect_regulation_question(user_message)
+                content = re.sub(r'<@!?\d+>', '', message.content).strip()
+                is_reg = self.analyzer.detect_regulation_question(content)
 
-                if is_regulation:
-                    response = await self.handle_regulation_analysis(user_message, user_id, username)
+                if is_reg:
+                    response = await self.handle_regulation_analysis(content, user_id, username)
                     self.stats['regulation_analyses'] += 1
                 else:
-                    response = await self.handle_normal_chat(user_message, user_id, username)
+                    response = await self.handle_normal_chat(content, user_id, username)
 
-                await self.send_response(message, response, is_regulation)
+                await self.send_response(message, response, is_reg)
                 
-                # ログ保存
-                resp_time = int((datetime.now() - start_time).total_seconds() * 1000)
-                await self.db.save_conversation(user_id, user_message, response, is_regulation, resp_time)
+                ms = int((datetime.now() - start_time).total_seconds() * 1000)
+                await self.db.save_conversation(user_id, content, response, is_reg, ms)
 
         except Exception as e:
             self.stats['errors'] += 1
             logger.error(f"Chat Error: {e}")
-            await self.send_error_message(message)
+            await message.reply("ごめん、エラーが出てもうたわ💦")
 
-    def preprocess_message(self, content: str) -> str:
-        content = re.sub(r'<@!?\d+>', '', content)
-        return re.sub(r'\s+', ' ', content).strip()
+    # ---------- GPT 呼び出し処理 ----------
 
-    # ---------- GPT 呼び出し (提示コード準拠) ----------
     async def handle_regulation_analysis(self, message: str, user_id: str, username: str) -> str:
         target = self.analyzer.extract_regulation_target(message)
         prompt = self.analyzer.create_analysis_prompt(message, target)
+        
+        # 簡易スコア(保存用ダミー)
+        scores = {'legal': 3, 'purpose': 3, 'proportion': 3}
+        judgment = "要検討"
         
         response = await self.call_gpt_with_retry(
             system_prompt=prompt,
             user_message=message,
             max_tokens=self.config.REGULATION_ANALYSIS_MAX_TOKENS,
             temperature=0.6,
-            reasoning_effort="medium"
+            reasoning_effort="medium" # 推論モデル用パラメータ
         )
-        # 簡易的なスコア保存（必要ならここでパース）
-        scores = {'legal': 3, 'purpose': 3, 'proportion': 3}
-        judgment = "要検討"
-        if "妥当" in response: judgment = "妥当"
-        elif "問題" in response: judgment = "問題あり"
         
         await self.db.save_regulation_analysis(user_id, target, message, scores, judgment, response)
         return response
@@ -412,10 +384,13 @@ class AkaneBot(commands.Bot):
             reasoning_effort="medium"
         )
 
+    # ★バックアップコードの核心部分: パラメータの出し分け
     async def call_gpt_with_retry(
         self, system_prompt: str, user_message: str, max_tokens: int = 500,
         temperature: float = 0.8, reasoning_effort: str = "medium", max_retries: int = 3
     ) -> str:
+        
+        # モデル判定
         is_reasoning = self.is_reasoning_model()
 
         for attempt in range(max_retries):
@@ -429,24 +404,27 @@ class AkaneBot(commands.Bot):
                     "messages": messages,
                 }
 
-                # ★提示コードのロジック: 推論モデルなら temperature を含めない
                 if is_reasoning:
+                    # ★重要: GPT-5.1等の推論モデルでは temperature を送らない
                     params["max_completion_tokens"] = max_tokens
                     params["reasoning_effort"] = reasoning_effort
+                    # バックアップコードに従い、ここでは temperature を設定しません
                 else:
+                    # 従来モデル用
                     params["max_tokens"] = max_tokens
                     params["temperature"] = temperature
                     params["frequency_penalty"] = 0.1
                     params["presence_penalty"] = 0.1
 
-                # 非同期で実行
                 loop = asyncio.get_running_loop()
                 response = await loop.run_in_executor(None, lambda: client.chat.completions.create(**params))
                 return response.choices[0].message.content
 
             except Exception as e:
                 logger.warning(f"GPT Retry {attempt+1}: {e}")
-                if attempt == max_retries - 1: raise
+                if attempt == max_retries - 1:
+                    logger.error(f"Failed to call OpenAI: {e}")
+                    return "あかん、APIエラーや... 設定を見直してな。"
                 await asyncio.sleep(2 ** attempt)
 
     def create_character_prompt(self, username: str) -> str:
@@ -455,12 +433,11 @@ class AkaneBot(commands.Bot):
 ユーザー名: {username}
 ユーザーに共感し、明るく振る舞ってください。"""
 
+    # 簡易実装用のパース関数
     def extract_scores_from_response(self, response: str) -> Dict[str, int]:
-        return {'legal': 3, 'purpose': 3, 'proportion': 3} # 簡易実装
+        return {'legal': 3, 'purpose': 3, 'proportion': 3}
 
     def extract_judgment_from_response(self, response: str) -> str:
-        if '妥当' in response: return '妥当'
-        elif '問題' in response: return '問題あり'
         return '要検討'
 
     async def send_response(self, message, response: str, is_regulation: bool = False):
@@ -476,23 +453,14 @@ class AkaneBot(commands.Bot):
             else:
                 await message.reply(response)
 
-    async def send_limit_reached_message(self, message, usage_count: int):
-        await message.reply("今日の会話回数はこれでおしまいや。また明日な！")
-    
-    async def send_usage_notification(self, message, usage_count: int):
-        pass # 通知がうるさい場合は省略
-
-    async def send_error_message(self, message):
-        await message.reply("ごめん、エラーが出てもうたわ💦")
-
 # =========================
-# 5. 汎用機能 (スケジュール・管理・チケット)
+# 5. 汎用機能 (View & Command)
 # =========================
 class ScheduleView(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
-    async def update(self, interaction, status):
-        embed = interaction.message.embeds[0]
-        user = interaction.user
+    async def update(self, i, status):
+        embed = i.message.embeds[0]
+        user = i.user
         new_fields = []
         target = f"【{status}】"
         for field in embed.fields:
@@ -500,12 +468,11 @@ class ScheduleView(discord.ui.View):
             if field.name == target: lines.append(f"• {user.mention}")
             val = '\n'.join(lines) if lines else "なし"
             new_fields.append((field.name, val))
-        
         new_embed = discord.Embed(title=embed.title, description=embed.description, color=embed.color)
         new_embed.set_footer(text=embed.footer.text)
         new_embed.timestamp = embed.timestamp
         for n, v in new_fields: new_embed.add_field(name=n, value=v)
-        await interaction.response.edit_message(embed=new_embed)
+        await i.response.edit_message(embed=new_embed)
 
     @discord.ui.button(label="参加", style=discord.ButtonStyle.success, custom_id="sch_join")
     async def join(self, i, b): await self.update(i, "参加")
@@ -531,7 +498,7 @@ class TicketCloseView(discord.ui.View):
         await i.channel.delete()
 
 # =========================
-# 6. コマンド登録 (Bot外定義)
+# 6. コマンド登録
 # =========================
 bot = AkaneBot()
 
@@ -567,23 +534,18 @@ async def poll(interaction, question: str, opt1: str, opt2: str):
     await msg.add_reaction("2️⃣")
     await interaction.response.send_message("投票作成完了", ephemeral=True)
 
-# 提示コードのコマンド (!usage, !stats, !help) も保持
-@bot.command(name='usage')
-async def check_usage(ctx):
-    usage = await bot.db.get_user_usage_today(str(ctx.author.id), ctx.author.display_name)
-    await ctx.send(f"今日の使用回数: {usage}/{bot.config.DAILY_MESSAGE_LIMIT}")
-
+# 従来のPrefixコマンド (!statsなど)
 @bot.command(name='stats')
 async def show_stats(ctx):
     await ctx.send(f"総メッセージ: {bot.stats['total_messages']}, エラー: {bot.stats['errors']}")
 
-@bot.command(name='help')
-async def help_cmd(ctx):
-    await ctx.send("【表自派茜Bot】\n!usage: 使用回数確認\n/schedule: スケジュール作成\n/poll: 投票\nその他: 話しかけると会話するで！")
+@bot.command(name='usage')
+async def check_usage(ctx):
+    usage = await bot.db.get_user_usage_today(str(ctx.author.id), ctx.author.display_name)
+    await ctx.send(f"今日の使用: {usage}回")
 
 @bot.event
 async def on_member_join(member):
-    # Welcome & AutoRole
     async with aiosqlite.connect(bot.config.DB_NAME) as db:
         c = await db.execute("SELECT welcome_channel_id FROM settings WHERE guild_id=?", (member.guild.id,))
         row = await c.fetchone()
