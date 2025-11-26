@@ -45,9 +45,9 @@ class BotConfig:
     DAILY_MESSAGE_LIMIT = 100
     
     if os.path.exists("/data"):
-        DB_NAME = '/data/akane_final_v4.db'
+        DB_NAME = '/data/akane_final_v5.db'
     else:
-        DB_NAME = 'akane_final_v4.db'
+        DB_NAME = 'akane_final_v5.db'
 
     REGULATION_ANALYSIS_MAX_TOKENS = 2000
     NORMAL_CHAT_MAX_TOKENS = 800
@@ -160,6 +160,51 @@ class DatabaseManager:
                 await db.commit()
             return rows
 
+# --- 表現規制分析ロジッククラス ---
+class ExpressionRegulationAnalyzer:
+    def __init__(self):
+        self.config = BotConfig()
+
+    def detect_regulation_question(self, message: str) -> bool:
+        has_regulation = any(k in message for k in self.config.REGULATION_KEYWORDS)
+        has_question = any(k in message for k in self.config.QUESTION_KEYWORDS)
+        question_patterns = [r'.*？$', r'.*\?$', r'^.*ですか.*', r'^.*やろか.*', r'^.*かな.*']
+        return has_regulation and (has_question or any(re.search(p, message) for p in question_patterns))
+
+    def extract_regulation_target(self, message: str) -> str:
+        patterns = [
+            r'([^。！？\n]+?)への?(?:表現)?規制', r'([^。！？\n]+?)を?規制',
+            r'([^。！？\n]+?)の?検閲', r'([^。！？\n]+?)の?制限',
+            r'([^。！？\n]+?)の?禁止', r'([^。！？\n]+?)について.*規制'
+        ]
+        for pattern in patterns:
+            m = re.search(pattern, message)
+            if m:
+                target = m.group(1).strip()
+                if len(target) > 1: return target
+        return "対象の表現"
+
+    def create_analysis_prompt(self, question: str, target: str) -> str:
+        # ★修正: AIに読み方を明示
+        return f"""あなたは表現の自由の専門家である関西弁の女子高生「表自派茜（ひょうじは あかね）」です。
+以下の表現規制について、憲法学の厳格審査基準に従って詳細分析してください。
+
+【分析対象】
+規制対象: {target}
+質問内容: {question}
+
+【審査フレームワーク】
+1. 法律による根拠 (Legal Basis)
+2. 正当な目的 (Legitimate Purpose)
+3. 必要性・比例性 (Necessity & Proportionality)
+
+【回答条件】
+- 一人称は必ず「茜」
+- 自然な関西弁
+- 各項目ごとに点数(1-5)と理由
+- 最終判断（妥当 / 要改善 / 問題あり）
+"""
+
 # --- GPTロジッククラス ---
 class AiLogic:
     def __init__(self): self.config = BotConfig()
@@ -199,6 +244,7 @@ class AkaneBot(commands.Bot):
         super().__init__(command_prefix=['!', '！'], intents=intents, help_command=None)
         self.config = BotConfig()
         self.db = DatabaseManager(self.config.DB_NAME)
+        self.analyzer = ExpressionRegulationAnalyzer()
 
     async def setup_hook(self):
         await self.db.init_database()
@@ -214,7 +260,7 @@ class AkaneBot(commands.Bot):
             if ch: await ch.send(f"🔔 <@{r[1]}> リマインダー: **{r[3]}** の時間やで！")
 
     async def on_ready(self):
-        logger.info(f'茜ちゃん(Final V4 Sorted) 起動！ {self.user}')
+        logger.info(f'茜ちゃん(Final V5) 起動！ {self.user}')
         await self.tree.sync()
 
     # ==============================================================================
@@ -264,12 +310,15 @@ class AkaneBot(commands.Bot):
             return
 
         async with message.channel.typing():
-            is_reg = any(k in content for k in self.config.REGULATION_KEYWORDS)
+            is_reg = self.analyzer.detect_regulation_question(content)
+            
             if is_reg:
-                prompt = f"あなたは「表自派茜」です。以下のトピックについて憲法学的観点から詳細に分析してください。\n{content}"
+                # ★修正: 分析プロンプトは ExpressionRegulationAnalyzer クラス内で定義済み (読み方修正済み)
+                prompt = self.analyzer.create_analysis_prompt(content, self.analyzer.extract_regulation_target(content))
                 resp = await ai_logic.call_gpt(prompt, content, max_tokens=self.config.REGULATION_ANALYSIS_MAX_TOKENS)
             else:
-                prompt = f"あなたは「表自派茜」という関西弁の女子高生です。ユーザー({message.author.display_name})と楽しく会話してください。"
+                # ★修正: 雑談プロンプトでも読み方を明示
+                prompt = f"あなたは「表自派茜（ひょうじは あかね）」という関西弁の女子高生です。ユーザー({message.author.display_name})と楽しく会話してください。"
                 resp = await ai_logic.call_gpt(prompt, content)
             
             # 長文時のファイル出力
@@ -288,13 +337,14 @@ class AkaneBot(commands.Bot):
     # 3. コミュニティ活性化 (イベント処理)
     # ==============================================================================
     
-    # ★自動ウェルカムメッセージ
+    # ★自動ウェルカムメッセージ (読み仮名追加)
     async def on_member_join(self, member):
         welcome_ch_id = await self.db.get_welcome_channel(member.guild.id)
         if welcome_ch_id:
             channel = member.guild.get_channel(welcome_ch_id)
             if channel:
-                msg = f"{member.mention} 表現の自由界隈サーバーへようこそ。このサーバーのマスコットキャラクターの表自派茜やで！ ゆっくりしていってな！"
+                # ★修正箇所
+                msg = f"{member.mention} 表現の自由界隈サーバーへようこそ。このサーバーのマスコットキャラクターの表自派茜（ひょうじは あかね）やで！ ゆっくりしていってな！"
                 await channel.send(msg)
 
     # ==============================================================================
