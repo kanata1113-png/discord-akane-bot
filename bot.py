@@ -43,12 +43,12 @@ JST = pytz.timezone('Asia/Tokyo')
 class BotConfig:
     DAILY_MESSAGE_LIMIT = 100
     if os.path.exists("/data"):
-        DB_NAME = '/data/akane_final_v11.db'
+        DB_NAME = '/data/akane_final_v12.db'
     else:
-        DB_NAME = 'akane_final_v11.db'
+        DB_NAME = 'akane_final_v12.db'
 
     REGULATION_ANALYSIS_MAX_TOKENS = 2000
-    NORMAL_CHAT_MAX_TOKENS = 2000
+    NORMAL_CHAT_MAX_TOKENS = 800
     GPT_MODEL = OpenAIConfig.GPT_MODEL
 
     REGULATION_KEYWORDS = ['表現規制', '規制', '検閲', '制限', '禁止', '表現の自由', '言論統制', '弾圧']
@@ -83,7 +83,7 @@ class DatabaseManager:
             await db.execute('''CREATE TABLE IF NOT EXISTS ng_words (guild_id INTEGER, word TEXT)''')
             await db.execute('''CREATE TABLE IF NOT EXISTS auto_replies (guild_id INTEGER, trigger TEXT, response TEXT)''')
             await db.execute('''CREATE TABLE IF NOT EXISTS reminders (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, channel_id INTEGER, message TEXT, end_time TEXT)''')
-            # ★殿堂入り重複防止用
+            # 殿堂入りログ
             await db.execute('''CREATE TABLE IF NOT EXISTS starboard_log (message_id INTEGER PRIMARY KEY)''')
             
             await db.commit()
@@ -146,7 +146,7 @@ class DatabaseManager:
             row = await cursor.fetchone()
             return row[0] if row else None
 
-    # --- 殿堂入りログ管理 ---
+    # --- 殿堂入りログ ---
     async def is_starboard_posted(self, message_id: int) -> bool:
         async with aiosqlite.connect(self.db_name) as db:
             cursor = await db.execute("SELECT message_id FROM starboard_log WHERE message_id = ?", (message_id,))
@@ -272,6 +272,7 @@ class AiLogic:
         
         try:
             params = {"model": model, "messages": [{"role":"system","content":system_prompt}, {"role":"user","content":user_message}]}
+            
             if is_reasoning:
                 params["max_completion_tokens"] = max_tokens
                 params["reasoning_effort"] = "medium" 
@@ -285,11 +286,16 @@ class AiLogic:
             
         except Exception as e:
             logger.error(f"GPT Error: {e}")
-            return "ごめん、考えすぎて頭パンクしてもうた（エラー発生）。少し短くするか、時間おいて聞いてな！"
+            return "ごめん、AIの調子が悪くて返事できへんかった... ちょっと待ってからまた話しかけてな！"
 
     async def translate(self, text: str, target_lang: str) -> str:
         prompt = f"Translate to {target_lang}. Output ONLY translated text."
         return await self.call_gpt(prompt, text, max_tokens=1000)
+
+    # ★追加: 辞書機能用メソッド
+    async def dictionary(self, word: str) -> str:
+        prompt = f"あなたは親切な辞書です。「{word}」という言葉の意味を、200文字程度で分かりやすく要約して解説してください。"
+        return await self.call_gpt(prompt, word, max_tokens=500)
 
 # ==============================================================================
 # 3. Bot本体 & タスク
@@ -312,7 +318,7 @@ class AkaneBot(commands.Bot):
         self.add_view(TicketCloseView())
 
     async def on_ready(self):
-        logger.info(f'茜ちゃん(Final V11) 起動！ {self.user}')
+        logger.info(f'茜ちゃん(Final V12) 起動！ {self.user}')
         await self.tree.sync()
 
     @tasks.loop(time=time(hour=7, minute=0, tzinfo=JST))
@@ -327,7 +333,7 @@ class AkaneBot(commands.Bot):
             rule_ch = guild.get_channel(rule_ch_id)
             target_ch = guild.get_channel(target_ch_id)
             if rule_ch and target_ch:
-                msg = f"表現の自由界隈のみなさん、おはようさん。新しい一ヶ月が始まりました。\nこちらはサーバーのルールブックになりますので、まだ未読の方はこれを機に目を通しておいてください。\n今月もまたよろしくな！\n\n📌 **ルールブック:** {rule_ch.mention}"
+                msg = f"表現の自由界隈のみなさん、おはようさんやで〜！✨ (๑˃̵ᴗ˂̵)و/n新しい1ヶ月がまた始まったな〜！🔥/nこれがサーバーのルールブックになっとるさかい、/nまだ読んでへん人はこの機会にサッと目を通しといてな📘✨/nほな、今月もよろしゅう頼むで〜！🙏💛\n\n📌 **ルールブック:** {rule_ch.mention}"
                 try: await target_ch.send(msg)
                 except: pass
 
@@ -338,7 +344,6 @@ class AkaneBot(commands.Bot):
             ch = self.get_channel(r[2])
             if ch: await ch.send(f"🔔 <@{r[1]}> リマインダー: **{r[3]}** の時間やで！")
 
-    # --- イベント処理 ---
     async def on_message(self, message):
         if message.author.bot or not message.guild: return
         if await self.check_moderation(message): return
@@ -386,8 +391,6 @@ class AkaneBot(commands.Bot):
     async def on_reaction_add(self, reaction, user):
         if user.bot: return
         emoji = str(reaction.emoji)
-        
-        # 国旗翻訳
         if emoji in self.config.FLAG_MAPPING:
             lang = self.config.FLAG_MAPPING[emoji]
             content = reaction.message.content
@@ -398,7 +401,6 @@ class AkaneBot(commands.Bot):
                 try: await user.send(embed=embed)
                 except: await reaction.message.channel.send(f"{user.mention} DM送れんかったわ。", delete_after=5)
 
-    # リアクションロール & 殿堂入り機能 (on_raw_reaction_addで処理)
     async def on_raw_reaction_add(self, payload):
         if payload.member.bot: return
         emoji = str(payload.emoji)
@@ -409,20 +411,18 @@ class AkaneBot(commands.Bot):
             role = self.get_guild(payload.guild_id).get_role(rid)
             if role: await payload.member.add_roles(role)
 
-        # 2. ★殿堂入り機能 (❤️ 10個)
+        # 2. 殿堂入り (❤️ 10個)
         if emoji == "❤️":
             channel = self.get_channel(payload.channel_id)
             msg = await channel.fetch_message(payload.message_id)
             reaction = discord.utils.get(msg.reactions, emoji="❤️")
             
-            # 10個以上 かつ まだ殿堂入りしていない場合
             if reaction and reaction.count >= 10:
                 if not await self.db.is_starboard_posted(msg.id):
                     sb_channel_id = await self.db.get_channel_setting(payload.guild_id, "starboard_channel_id")
                     if sb_channel_id:
                         sb_ch = self.get_channel(sb_channel_id)
                         if sb_ch:
-                            # Embed作成
                             embed = discord.Embed(description=msg.content, color=discord.Color.red(), timestamp=msg.created_at)
                             embed.set_author(name=msg.author.display_name, icon_url=msg.author.display_avatar.url)
                             embed.add_field(name="元のメッセージ", value=f"[こちらをタップ]({msg.jump_url})")
@@ -430,8 +430,8 @@ class AkaneBot(commands.Bot):
                                 embed.set_image(url=msg.attachments[0].url)
                             
                             await sb_ch.send(content="いいねがたくさん。殿堂入りやね！（茜）", embed=embed)
-                            await self.db.add_starboard_log(msg.id) # 重複防止用ログ
-
+                            await self.db.add_starboard_log(msg.id)
+    
     async def on_raw_reaction_remove(self, payload):
         rid = await self.db.get_reaction_role(payload.message_id, str(payload.emoji))
         if rid:
@@ -453,12 +453,23 @@ ai_logic = AiLogic()
 # 4. コマンド群
 # ==============================================================================
 
+# --- AI ---
 @bot.tree.command(name="translate", description="AI翻訳")
 async def translate(interaction: discord.Interaction, text: str, language: str = "Japanese"):
     await interaction.response.defer()
     res = await ai_logic.translate(text, language)
     await interaction.followup.send(embed=discord.Embed(title=f"翻訳 ({language})", description=res, color=discord.Color.blue()))
 
+# ★追加: AI辞書機能
+@bot.tree.command(name="dictionary", description="AI辞書: 言葉の意味を200文字で解説")
+async def dictionary(interaction: discord.Interaction, word: str):
+    await interaction.response.defer()
+    result = await ai_logic.dictionary(word)
+    embed = discord.Embed(title=f"📖 辞書: {word}", description=result, color=discord.Color.green())
+    embed.set_footer(text="Powered by AI Dictionary")
+    await interaction.followup.send(embed=embed)
+
+# --- コミュニティ ---
 @bot.tree.command(name="poll", description="投票を作成")
 @app_commands.describe(question="質問内容", option1="選択肢1", option2="選択肢2", option3="選択肢3", option4="選択肢4")
 async def poll(interaction: discord.Interaction, question: str, option1: str, option2: str, option3: Optional[str] = None, option4: Optional[str] = None):
@@ -494,6 +505,7 @@ async def level_reward(interaction: discord.Interaction, level: int, role: disco
         await db.commit()
     await interaction.response.send_message(f"Lv.{level} で {role.name} 付与設定完了。", ephemeral=True)
 
+# --- ユーティリティ ---
 @bot.tree.command(name="schedule", description="スケジュール作成")
 async def schedule(interaction: discord.Interaction, title: str, date: str, time: str):
     try:
@@ -527,6 +539,7 @@ async def auto_reply_add(interaction: discord.Interaction, trigger: str, respons
     await bot.db.add_auto_reply(interaction.guild.id, trigger, response)
     await interaction.response.send_message(f"設定完了: {trigger} -> {response}", ephemeral=True)
 
+# --- 管理・ログ ---
 @bot.tree.command(name="ng_add", description="[管理者] NGワード追加")
 @app_commands.checks.has_permissions(administrator=True)
 async def ng_add(interaction: discord.Interaction, word: str):
