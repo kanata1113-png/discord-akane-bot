@@ -10,6 +10,7 @@ import logging
 from datetime import datetime, timedelta, time
 import pytz
 import re
+import io
 from collections import defaultdict, deque
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
@@ -30,7 +31,6 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 class OpenAIConfig:
-    # ★修正: 高速な gpt-5-mini に変更
     GPT_MODEL = "gpt-5-mini"
 
 if OPENAI_API_KEY:
@@ -44,11 +44,10 @@ JST = pytz.timezone('Asia/Tokyo')
 class BotConfig:
     DAILY_MESSAGE_LIMIT = 100
     if os.path.exists("/data"):
-        DB_NAME = '/data/akane_final_v14.db'
+        DB_NAME = '/data/akane_final_v16.db'
     else:
-        DB_NAME = 'akane_final_v14.db'
+        DB_NAME = 'akane_final_v16.db'
 
-    # gpt-5-mini は高速なのでトークン数は余裕を持つ
     NORMAL_CHAT_MAX_TOKENS = 1500 
     GPT_MODEL = OpenAIConfig.GPT_MODEL
 
@@ -59,6 +58,9 @@ class BotConfig:
         "🇪🇸": "Spanish", "🇷🇺": "Russian", "🇻🇳": "Vietnamese",
         "🇹🇭": "Thai", "🇮🇩": "Indonesian"
     }
+    
+    REGULATION_KEYWORDS = ['表現規制', '規制', '検閲', '制限', '禁止', '表現の自由', '言論統制', '弾圧']
+    QUESTION_KEYWORDS = ['妥当', '適切', '正しい', 'どう思う', '判断', '評価', '分析']
 
 # ==============================================================================
 # 1. データベース管理
@@ -69,12 +71,9 @@ class DatabaseManager:
 
     async def init_database(self):
         async with aiosqlite.connect(self.db_name) as db:
-            # ログ・履歴
             await db.execute('''CREATE TABLE IF NOT EXISTS usage_log (id INTEGER PRIMARY KEY, user_id TEXT, date TEXT, count INTEGER DEFAULT 0, UNIQUE(user_id, date))''')
-            # 設定
             await db.execute('''CREATE TABLE IF NOT EXISTS settings (guild_id INTEGER PRIMARY KEY, autorole_id INTEGER, welcome_channel_id INTEGER, log_channel_id INTEGER, starboard_channel_id INTEGER, auto_chat_channel_id INTEGER)''')
             await db.execute('''CREATE TABLE IF NOT EXISTS monthly_settings (guild_id INTEGER PRIMARY KEY, rule_channel_id INTEGER, target_channel_id INTEGER)''')
-            # ユーザー・その他
             await db.execute('''CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, xp INTEGER DEFAULT 0, level INTEGER DEFAULT 1)''')
             await db.execute('''CREATE TABLE IF NOT EXISTS level_rewards (guild_id INTEGER, level INTEGER, role_id INTEGER, PRIMARY KEY(guild_id, level))''')
             await db.execute('''CREATE TABLE IF NOT EXISTS reaction_roles (message_id INTEGER, emoji TEXT, role_id INTEGER)''')
@@ -85,7 +84,7 @@ class DatabaseManager:
             await db.commit()
         logger.info(f"DB initialized: {self.db_name}")
 
-    # --- 設定系 ---
+    # --- 設定系 (Set / Disable) ---
     async def set_channel_setting(self, guild_id: int, col_name: str, channel_id: int):
         async with aiosqlite.connect(self.db_name) as db:
             cursor = await db.execute("SELECT guild_id FROM settings WHERE guild_id = ?", (guild_id,))
@@ -93,6 +92,12 @@ class DatabaseManager:
                 await db.execute(f"UPDATE settings SET {col_name} = ? WHERE guild_id = ?", (channel_id, guild_id))
             else:
                 await db.execute(f"INSERT INTO settings (guild_id, {col_name}) VALUES (?, ?)", (guild_id, channel_id))
+            await db.commit()
+
+    async def disable_channel_setting(self, guild_id: int, col_name: str):
+        async with aiosqlite.connect(self.db_name) as db:
+            # NULLを設定して無効化
+            await db.execute(f"UPDATE settings SET {col_name} = NULL WHERE guild_id = ?", (guild_id,))
             await db.commit()
 
     async def get_channel_setting(self, guild_id: int, col_name: str) -> Optional[int]:
@@ -103,9 +108,15 @@ class DatabaseManager:
                 return row[0] if row else None
             except: return None
 
+    # --- 月次ルール設定 ---
     async def set_monthly_rule(self, guild_id: int, rule_ch_id: int, target_ch_id: int):
         async with aiosqlite.connect(self.db_name) as db:
             await db.execute("INSERT OR REPLACE INTO monthly_settings (guild_id, rule_channel_id, target_channel_id) VALUES (?, ?, ?)", (guild_id, rule_ch_id, target_ch_id))
+            await db.commit()
+
+    async def remove_monthly_rule(self, guild_id: int):
+        async with aiosqlite.connect(self.db_name) as db:
+            await db.execute("DELETE FROM monthly_settings WHERE guild_id = ?", (guild_id,))
             await db.commit()
 
     async def get_all_monthly_settings(self):
@@ -137,10 +148,26 @@ class DatabaseManager:
             if row: return row[0], row[1]
             return 1, 0
 
+    # --- レベル報酬 ---
+    async def get_level_rewards(self, guild_id: int):
+        async with aiosqlite.connect(self.db_name) as db:
+            cursor = await db.execute("SELECT level, role_id FROM level_rewards WHERE guild_id = ? ORDER BY level ASC", (guild_id,))
+            return await cursor.fetchall()
+
+    async def remove_level_reward(self, guild_id: int, level: int):
+        async with aiosqlite.connect(self.db_name) as db:
+            await db.execute("DELETE FROM level_rewards WHERE guild_id = ? AND level = ?", (guild_id, level))
+            await db.commit()
+
     # --- リアクションロール ---
     async def add_reaction_role(self, message_id: int, emoji: str, role_id: int):
         async with aiosqlite.connect(self.db_name) as db:
             await db.execute("INSERT INTO reaction_roles (message_id, emoji, role_id) VALUES (?, ?, ?)", (message_id, emoji, role_id))
+            await db.commit()
+
+    async def remove_reaction_role(self, message_id: int, emoji: str):
+        async with aiosqlite.connect(self.db_name) as db:
+            await db.execute("DELETE FROM reaction_roles WHERE message_id = ? AND emoji = ?", (message_id, emoji))
             await db.commit()
 
     async def get_reaction_role(self, message_id: int, emoji: str):
@@ -160,26 +187,45 @@ class DatabaseManager:
             await db.execute("INSERT INTO starboard_log (message_id) VALUES (?)", (message_id,))
             await db.commit()
 
-    # --- その他便利機能 ---
+    # --- NGワード ---
     async def add_ng_word(self, guild_id, word):
         async with aiosqlite.connect(self.db_name) as db:
             await db.execute("INSERT INTO ng_words (guild_id, word) VALUES (?, ?)", (guild_id, word))
             await db.commit()
+
+    async def remove_ng_word(self, guild_id, word):
+        async with aiosqlite.connect(self.db_name) as db:
+            await db.execute("DELETE FROM ng_words WHERE guild_id = ? AND word = ?", (guild_id, word))
+            await db.commit()
+
     async def get_ng_words(self, guild_id):
         async with aiosqlite.connect(self.db_name) as db:
             cursor = await db.execute("SELECT word FROM ng_words WHERE guild_id = ?", (guild_id,))
             return [r[0] for r in await cursor.fetchall()]
     
+    # --- 自動応答 ---
     async def add_auto_reply(self, guild_id, trigger, response):
         async with aiosqlite.connect(self.db_name) as db:
             await db.execute("INSERT INTO auto_replies (guild_id, trigger, response) VALUES (?, ?, ?)", (guild_id, trigger, response))
             await db.commit()
+
+    async def remove_auto_reply(self, guild_id, trigger):
+        async with aiosqlite.connect(self.db_name) as db:
+            await db.execute("DELETE FROM auto_replies WHERE guild_id = ? AND trigger = ?", (guild_id, trigger))
+            await db.commit()
+
+    async def get_all_auto_replies(self, guild_id):
+        async with aiosqlite.connect(self.db_name) as db:
+            cursor = await db.execute("SELECT trigger, response FROM auto_replies WHERE guild_id = ?", (guild_id,))
+            return await cursor.fetchall()
+
     async def get_auto_reply(self, guild_id, content):
         async with aiosqlite.connect(self.db_name) as db:
             cursor = await db.execute("SELECT response FROM auto_replies WHERE guild_id = ? AND trigger = ?", (guild_id, content))
             row = await cursor.fetchone()
             return row[0] if row else None
 
+    # --- リマインダー ---
     async def add_reminder(self, user_id, channel_id, message, minutes):
         end = (datetime.now(JST) + timedelta(minutes=minutes)).isoformat()
         async with aiosqlite.connect(self.db_name) as db:
@@ -214,7 +260,6 @@ class DatabaseManager:
 
 class ScheduleView(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
-    
     async def update(self, i, status):
         embed = i.message.embeds[0]; user = i.user; target = f"【{status}】"
         new_fields = []
@@ -227,7 +272,6 @@ class ScheduleView(discord.ui.View):
         new_embed.set_footer(text=embed.footer.text); new_embed.timestamp = embed.timestamp
         for n, v in new_fields: new_embed.add_field(name=n, value=v)
         await i.response.edit_message(embed=new_embed)
-
     @discord.ui.button(label="参加", style=discord.ButtonStyle.success, custom_id="sch_join")
     async def join(self, i, b): await self.update(i, "参加")
     @discord.ui.button(label="不参加", style=discord.ButtonStyle.danger, custom_id="sch_leave")
@@ -250,31 +294,41 @@ class TicketCreateView(discord.ui.View):
         await i.response.send_message(f"個別の部屋を作ったで！こっちや: {ch.mention}", ephemeral=True)
         await ch.send(f"{i.user.mention} ここは他の人には見えへんから、安心して要件を書いてな。", view=TicketCloseView())
 
+class ExpressionRegulationAnalyzer:
+    def __init__(self): self.config = BotConfig()
+    def detect_regulation_question(self, message: str) -> bool:
+        has_regulation = any(k in message for k in self.config.REGULATION_KEYWORDS)
+        has_question = any(k in message for k in self.config.QUESTION_KEYWORDS)
+        question_patterns = [r'.*？$', r'.*\?$', r'^.*ですか.*', r'^.*やろか.*', r'^.*かな.*']
+        return has_regulation and (has_question or any(re.search(p, message) for p in question_patterns))
+    def extract_regulation_target(self, message: str) -> str:
+        patterns = [r'([^。！？\n]+?)への?(?:表現)?規制', r'([^。！？\n]+?)を?規制', r'([^。！？\n]+?)について.*規制']
+        for pattern in patterns:
+            m = re.search(pattern, message)
+            if m: return m.group(1).strip()
+        return "対象の表現"
+    def create_analysis_prompt(self, question: str, target: str) -> str:
+        return f"あなたは「表自派茜（ひょうじは あかね）」です。\n規制対象: {target}\n質問: {question}\n厳格審査基準で分析してください。"
+
 class AiLogic:
     def __init__(self): self.config = BotConfig()
-    
     async def call_gpt(self, system_prompt: str, user_message: str, max_tokens: int = 500) -> str:
         model = self.config.GPT_MODEL
         is_reasoning = "gpt-5" in model or "o1" in model
-        
         try:
             params = {"model": model, "messages": [{"role":"system","content":system_prompt}, {"role":"user","content":user_message}]}
-            
             if is_reasoning:
-                # gpt-5-mini (Reasoning Model) 用設定
                 params["max_completion_tokens"] = max_tokens
                 params["reasoning_effort"] = "medium" 
             else:
                 params["max_tokens"] = max_tokens
                 params["temperature"] = 0.7
-            
             loop = asyncio.get_running_loop()
             resp = await loop.run_in_executor(None, lambda: client.chat.completions.create(**params))
             return resp.choices[0].message.content
-            
         except Exception as e:
             logger.error(f"GPT Error: {e}")
-            return "ごめん、AIの調子が悪くて返事できへんかった... ちょっと待ってからまた話しかけてな！"
+            return "ごめん、考えすぎて頭パンクしてもうた（エラー発生）。少し短くするか、時間おいて聞いてな！"
 
     async def translate(self, text: str, target_lang: str) -> str:
         prompt = f"Translate to {target_lang}. Output ONLY translated text."
@@ -293,6 +347,7 @@ class AkaneBot(commands.Bot):
         super().__init__(command_prefix=['!', '！'], intents=intents, help_command=None)
         self.config = BotConfig()
         self.db = DatabaseManager(self.config.DB_NAME)
+        self.analyzer = ExpressionRegulationAnalyzer()
         self.spam_tracker = defaultdict(lambda: deque(maxlen=5))
 
     async def setup_hook(self):
@@ -304,10 +359,9 @@ class AkaneBot(commands.Bot):
         self.add_view(TicketCloseView())
 
     async def on_ready(self):
-        logger.info(f'茜ちゃん(Final V14) 起動！ {self.user}')
+        logger.info(f'茜ちゃん(Final V16) 起動！ {self.user}')
         await self.tree.sync()
 
-    # 月次自動投稿タスク (毎月1日 7:00 JST)
     @tasks.loop(time=time(hour=7, minute=0, tzinfo=JST))
     async def monthly_rule_task(self):
         now = datetime.now(JST)
@@ -336,7 +390,6 @@ class AkaneBot(commands.Bot):
             ch = self.get_channel(r[2])
             if ch: await ch.send(f"🔔 <@{r[1]}> リマインダー: **{r[3]}** の時間やで！")
 
-    # --- イベント処理 ---
     async def on_message(self, message):
         if message.author.bot or not message.guild: return
         if await self.check_moderation(message): return
@@ -344,14 +397,12 @@ class AkaneBot(commands.Bot):
         auto_res = await self.db.get_auto_reply(message.guild.id, message.content)
         if auto_res: await message.channel.send(auto_res); return
 
-        # 常駐チャット or メンション
         auto_chat_ch_id = await self.db.get_channel_setting(message.guild.id, "auto_chat_channel_id")
         is_auto_chat = (message.channel.id == auto_chat_ch_id)
         
         if self.user in message.mentions or is_auto_chat:
             await self.handle_chat(message)
         
-        # XP
         _, _, is_up = await self.db.add_xp(message.author.id, 10)
         if is_up: await message.channel.send(f"🎉 {message.author.mention} レベルアップしたで！")
         
@@ -373,7 +424,6 @@ class AkaneBot(commands.Bot):
             return
         
         async with message.channel.typing():
-            # プロンプト (1000文字制限)
             prompt = (
                 "あなたは「表自派茜（ひょうじは あかね）」という元気な関西弁の女子高生AIです。\n"
                 "以下のルールを厳守してください：\n"
@@ -384,7 +434,6 @@ class AkaneBot(commands.Bot):
                 "「まだ話し足りないけど、字数の制限があるからいったんここらで切り上げるわ。気になることがあったらまた声をかけてな！」"
                 "という定型文を最後に追加して終了すること。"
             )
-            
             resp = await ai_logic.call_gpt(prompt, content, max_tokens=self.config.NORMAL_CHAT_MAX_TOKENS)
             
             if len(resp) > 1900:
@@ -393,7 +442,6 @@ class AkaneBot(commands.Bot):
             else:
                 await message.reply(resp)
 
-    # 国旗翻訳
     async def on_reaction_add(self, reaction, user):
         if user.bot: return
         emoji = str(reaction.emoji)
@@ -407,16 +455,13 @@ class AkaneBot(commands.Bot):
                 try: await user.send(embed=embed)
                 except: await reaction.message.channel.send(f"{user.mention} DM送れんかったわ。", delete_after=5)
 
-    # リアクションロール & 殿堂入り
     async def on_raw_reaction_add(self, payload):
         if payload.member.bot: return
         emoji = str(payload.emoji)
-        # RR
         rid = await self.db.get_reaction_role(payload.message_id, emoji)
         if rid:
             role = self.get_guild(payload.guild_id).get_role(rid)
             if role: await payload.member.add_roles(role)
-        # Starboard
         if emoji == "❤️":
             channel = self.get_channel(payload.channel_id)
             msg = await channel.fetch_message(payload.message_id)
@@ -491,6 +536,7 @@ async def level(interaction: discord.Interaction):
     lv, xp = await bot.db.get_user_level(interaction.user.id)
     await interaction.response.send_message(f"📊 **{interaction.user.display_name}** のステータス\nレベル: **{lv}**\n現在のXP: **{xp}**", ephemeral=True)
 
+# リアクションロール (追加/削除)
 @bot.tree.command(name="rr_add", description="[管理者] リアクションロール作成")
 @app_commands.checks.has_permissions(administrator=True)
 async def rr_add(interaction: discord.Interaction, message_id: str, emoji: str, role: discord.Role):
@@ -502,13 +548,34 @@ async def rr_add(interaction: discord.Interaction, message_id: str, emoji: str, 
         await interaction.response.send_message(f"設定完了: {emoji} -> {role.name}", ephemeral=True)
     except: await interaction.response.send_message("失敗。IDを確認してな。", ephemeral=True)
 
-@bot.tree.command(name="level_reward", description="[管理者] レベル報酬")
+@bot.tree.command(name="rr_remove", description="[管理者] リアクションロール削除")
+@app_commands.checks.has_permissions(administrator=True)
+async def rr_remove(interaction: discord.Interaction, message_id: str, emoji: str):
+    await bot.db.remove_reaction_role(int(message_id), emoji)
+    await interaction.response.send_message(f"設定解除: {message_id} の {emoji}", ephemeral=True)
+
+# レベル報酬 (追加/一覧/削除)
+@bot.tree.command(name="level_reward", description="[管理者] レベル報酬設定")
 @app_commands.checks.has_permissions(administrator=True)
 async def level_reward(interaction: discord.Interaction, level: int, role: discord.Role):
     async with aiosqlite.connect(bot.config.DB_NAME) as db:
         await db.execute("INSERT OR REPLACE INTO level_rewards (guild_id, level, role_id) VALUES (?, ?, ?)", (interaction.guild.id, level, role.id))
         await db.commit()
     await interaction.response.send_message(f"Lv.{level} で {role.name} 付与設定完了。", ephemeral=True)
+
+@bot.tree.command(name="level_reward_remove", description="[管理者] レベル報酬削除")
+@app_commands.checks.has_permissions(administrator=True)
+async def level_reward_remove(interaction: discord.Interaction, level: int):
+    await bot.db.remove_level_reward(interaction.guild.id, level)
+    await interaction.response.send_message(f"Lv.{level} の報酬設定を削除したで。", ephemeral=True)
+
+@bot.tree.command(name="level_reward_list", description="[管理者] レベル報酬一覧")
+@app_commands.checks.has_permissions(administrator=True)
+async def level_reward_list(interaction: discord.Interaction):
+    rows = await bot.db.get_level_rewards(interaction.guild.id)
+    if not rows: await interaction.response.send_message("設定なし。", ephemeral=True); return
+    text = "\n".join([f"Lv.{r[0]} -> <@&{r[1]}>" for r in rows])
+    await interaction.response.send_message(embed=discord.Embed(title="レベル報酬一覧", description=text), ephemeral=True)
 
 # --- ユーティリティ ---
 @bot.tree.command(name="schedule", description="スケジュール作成")
@@ -538,31 +605,70 @@ async def remind(interaction: discord.Interaction, minutes: int, message: str):
     await bot.db.add_reminder(interaction.user.id, interaction.channel_id, message, minutes)
     await interaction.response.send_message(f"{minutes}分後に通知するで。", ephemeral=True)
 
+# 自動応答 (追加/削除/一覧)
 @bot.tree.command(name="auto_reply_add", description="[管理者] 自動応答追加")
 @app_commands.checks.has_permissions(administrator=True)
 async def auto_reply_add(interaction: discord.Interaction, trigger: str, response: str):
     await bot.db.add_auto_reply(interaction.guild.id, trigger, response)
     await interaction.response.send_message(f"設定完了: {trigger} -> {response}", ephemeral=True)
 
-# --- 管理・ログ ---
+@bot.tree.command(name="auto_reply_remove", description="[管理者] 自動応答削除")
+@app_commands.checks.has_permissions(administrator=True)
+async def auto_reply_remove(interaction: discord.Interaction, trigger: str):
+    await bot.db.remove_auto_reply(interaction.guild.id, trigger)
+    await interaction.response.send_message(f"削除完了: {trigger}", ephemeral=True)
+
+@bot.tree.command(name="auto_reply_list", description="[管理者] 自動応答一覧")
+@app_commands.checks.has_permissions(administrator=True)
+async def auto_reply_list(interaction: discord.Interaction):
+    rows = await bot.db.get_all_auto_replies(interaction.guild.id)
+    if not rows: await interaction.response.send_message("設定なし。", ephemeral=True); return
+    text = "\n".join([f"・`{r[0]}` → `{r[1]}`" for r in rows])
+    await interaction.response.send_message(embed=discord.Embed(title="自動応答一覧", description=text[:4000]), ephemeral=True)
+
+# --- 管理・ログ (追加/削除/無効化) ---
 @bot.tree.command(name="ng_add", description="[管理者] NGワード追加")
 @app_commands.checks.has_permissions(administrator=True)
 async def ng_add(interaction: discord.Interaction, word: str):
     await bot.db.add_ng_word(interaction.guild.id, word)
     await interaction.response.send_message(f"NGワード「{word}」追加。", ephemeral=True)
 
-@bot.tree.command(name="setup_monthly_rule", description="[管理者] 毎月1日のルール周知を設定")
+@bot.tree.command(name="ng_remove", description="[管理者] NGワード削除")
 @app_commands.checks.has_permissions(administrator=True)
-@app_commands.describe(rule_channel="ルールブックのチャンネル", target_channel="投稿先の雑談チャンネル")
+async def ng_remove(interaction: discord.Interaction, word: str):
+    await bot.db.remove_ng_word(interaction.guild.id, word)
+    await interaction.response.send_message(f"NGワード「{word}」削除。", ephemeral=True)
+
+@bot.tree.command(name="ng_list", description="[管理者] NGワード一覧")
+@app_commands.checks.has_permissions(administrator=True)
+async def ng_list(interaction: discord.Interaction):
+    words = await bot.db.get_ng_words(interaction.guild.id)
+    await interaction.response.send_message(f"NGワード: {', '.join(words)}" if words else "なし", ephemeral=True)
+
+# --- 機能設定 (Set / Disable) ---
+@bot.tree.command(name="setup_monthly_rule", description="[管理者] 月次ルール通知設定")
+@app_commands.checks.has_permissions(administrator=True)
 async def setup_monthly_rule(interaction: discord.Interaction, rule_channel: discord.TextChannel, target_channel: discord.TextChannel):
     await bot.db.set_monthly_rule(interaction.guild.id, rule_channel.id, target_channel.id)
     await interaction.response.send_message(f"✅ 設定完了！", ephemeral=True)
 
-@bot.tree.command(name="set_welcome", description="[管理者] 挨拶チャンネル設定")
+@bot.tree.command(name="disable_monthly_rule", description="[管理者] 月次ルール通知をOFF")
+@app_commands.checks.has_permissions(administrator=True)
+async def disable_monthly_rule(interaction: discord.Interaction):
+    await bot.db.remove_monthly_rule(interaction.guild.id)
+    await interaction.response.send_message("月次ルール通知を停止したで。", ephemeral=True)
+
+@bot.tree.command(name="set_welcome", description="[管理者] 挨拶設定")
 @app_commands.checks.has_permissions(administrator=True)
 async def set_welcome(interaction: discord.Interaction, channel: discord.TextChannel):
     await bot.db.set_channel_setting(interaction.guild.id, "welcome_channel_id", channel.id)
     await interaction.response.send_message(f"挨拶場所: {channel.mention}", ephemeral=True)
+
+@bot.tree.command(name="disable_welcome", description="[管理者] 挨拶OFF")
+@app_commands.checks.has_permissions(administrator=True)
+async def disable_welcome(interaction: discord.Interaction):
+    await bot.db.disable_channel_setting(interaction.guild.id, "welcome_channel_id")
+    await interaction.response.send_message("挨拶機能を停止したで。", ephemeral=True)
 
 @bot.tree.command(name="set_log", description="[管理者] 監査ログ設定")
 @app_commands.checks.has_permissions(administrator=True)
@@ -570,17 +676,35 @@ async def set_log(interaction: discord.Interaction, channel: discord.TextChannel
     await bot.db.set_channel_setting(interaction.guild.id, "log_channel_id", channel.id)
     await interaction.response.send_message(f"ログ場所: {channel.mention}", ephemeral=True)
 
-@bot.tree.command(name="set_auto_chat", description="[管理者] 自動応答(常駐)チャンネル設定")
+@bot.tree.command(name="disable_log", description="[管理者] 監査ログOFF")
+@app_commands.checks.has_permissions(administrator=True)
+async def disable_log(interaction: discord.Interaction):
+    await bot.db.disable_channel_setting(interaction.guild.id, "log_channel_id")
+    await interaction.response.send_message("監査ログを停止したで。", ephemeral=True)
+
+@bot.tree.command(name="set_auto_chat", description="[管理者] 常駐自動応答設定")
 @app_commands.checks.has_permissions(administrator=True)
 async def set_auto_chat(interaction: discord.Interaction, channel: discord.TextChannel):
     await bot.db.set_channel_setting(interaction.guild.id, "auto_chat_channel_id", channel.id)
     await interaction.response.send_message(f"✅ 設定完了！ {channel.mention} で全レスするで！", ephemeral=True)
 
-@bot.tree.command(name="setup_starboard", description="[管理者] 殿堂入り設定 (❤️10個)")
+@bot.tree.command(name="disable_auto_chat", description="[管理者] 常駐自動応答OFF")
+@app_commands.checks.has_permissions(administrator=True)
+async def disable_auto_chat(interaction: discord.Interaction):
+    await bot.db.disable_channel_setting(interaction.guild.id, "auto_chat_channel_id")
+    await interaction.response.send_message("常駐自動応答を停止したで。", ephemeral=True)
+
+@bot.tree.command(name="setup_starboard", description="[管理者] 殿堂入り設定")
 @app_commands.checks.has_permissions(administrator=True)
 async def setup_starboard(interaction: discord.Interaction, channel: discord.TextChannel):
     await bot.db.set_channel_setting(interaction.guild.id, "starboard_channel_id", channel.id)
-    await interaction.response.send_message(f"殿堂入り先: {channel.mention} (❤️10個)", ephemeral=True)
+    await interaction.response.send_message(f"殿堂入り先: {channel.mention}", ephemeral=True)
+
+@bot.tree.command(name="disable_starboard", description="[管理者] 殿堂入りOFF")
+@app_commands.checks.has_permissions(administrator=True)
+async def disable_starboard(interaction: discord.Interaction):
+    await bot.db.disable_channel_setting(interaction.guild.id, "starboard_channel_id")
+    await interaction.response.send_message("殿堂入り機能を停止したで。", ephemeral=True)
 
 @bot.tree.command(name="setup_ticket", description="[管理者] チケット設置")
 @app_commands.checks.has_permissions(administrator=True)
@@ -596,49 +720,20 @@ async def kick(interaction: discord.Interaction, member: discord.Member): await 
 @app_commands.checks.has_permissions(ban_members=True)
 async def ban(interaction: discord.Interaction, member: discord.Member): await member.ban(); await interaction.response.send_message("Ban完了")
 
-# ★修正: 高度な削除機能 (Purge)
-@bot.tree.command(name="purge", description="[管理者] 条件を指定してメッセージを一括削除")
+@bot.tree.command(name="purge", description="[管理者] 削除")
 @app_commands.checks.has_permissions(manage_messages=True)
-@app_commands.describe(
-    amount="削除する最大件数 (上限100)",
-    target_user="特定のユーザーのメッセージのみ削除",
-    hours="過去○時間以内のメッセージのみ削除",
-    target_channel="削除対象のチャンネル (指定なしならココ)"
-)
 async def purge(interaction: discord.Interaction, amount: int, target_user: Optional[discord.Member] = None, hours: Optional[int] = None, target_channel: Optional[discord.TextChannel] = None):
     await interaction.response.defer(ephemeral=True)
-    
-    # チャンネル指定がなければ現在のチャンネル
-    channel_to_purge = target_channel if target_channel else interaction.channel
-    
-    # 時間制限の計算
-    cutoff = None
-    if hours:
-        # UTCで計算 (Discord.pyのメッセージ時間はUTC)
-        cutoff = datetime.now(pytz.utc) - timedelta(hours=hours)
-
+    ch = target_channel if target_channel else interaction.channel
+    cutoff = datetime.now(pytz.utc) - timedelta(hours=hours) if hours else None
     def check(msg):
-        # ユーザー指定
-        if target_user and msg.author != target_user:
-            return False
-        # 時間指定
-        if cutoff and msg.created_at < cutoff:
-            return False
+        if target_user and msg.author != target_user: return False
+        if cutoff and msg.created_at < cutoff: return False
         return True
-
     try:
-        deleted = await channel_to_purge.purge(limit=amount, check=check)
-        
-        # 結果メッセージ作成
-        res_msg = f"🗑️ {channel_to_purge.mention} で {len(deleted)}件 のメッセージを削除したで！"
-        conditions = []
-        if target_user: conditions.append(f"対象: {target_user.display_name}")
-        if hours: conditions.append(f"期間: {hours}時間以内")
-        if conditions: res_msg += f"\n(条件: {', '.join(conditions)})"
-        
-        await interaction.followup.send(res_msg, ephemeral=True)
-    except Exception as e:
-        await interaction.followup.send(f"削除中にエラーが出たわ: {e}", ephemeral=True)
+        deleted = await ch.purge(limit=amount, check=check)
+        await interaction.followup.send(f"🗑️ {len(deleted)}件 削除完了", ephemeral=True)
+    except Exception as e: await interaction.followup.send(f"エラー: {e}", ephemeral=True)
 
 if __name__ == '__main__':
     if DISCORD_TOKEN: bot.run(DISCORD_TOKEN)
