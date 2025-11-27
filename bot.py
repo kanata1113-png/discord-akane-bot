@@ -31,7 +31,7 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 class OpenAIConfig:
-    GPT_MODEL = "gpt-5.1"
+    GPT_MODEL = "gpt-5-mini"
 
 if OPENAI_API_KEY:
     client = OpenAI(api_key=OPENAI_API_KEY)
@@ -284,7 +284,7 @@ class AiLogic:
     def __init__(self): self.config = BotConfig()
     async def call_gpt(self, system_prompt: str, user_message: str, max_tokens: int = 500) -> str:
         model = self.config.GPT_MODEL
-        is_reasoning = "gpt-5" in model or "o1" in model
+        is_reasoning = "gpt-5-mini" in model or "o1" in model
         try:
             params = {"model": model, "messages": [{"role":"system","content":system_prompt}, {"role":"user","content":user_message}]}
             if is_reasoning:
