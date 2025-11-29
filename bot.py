@@ -31,9 +31,11 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 JST = pytz.timezone('Asia/Tokyo')
 
 class Config:
-    GPT_MODEL = "gpt-5-mini" # User specified model
+    GPT_MODEL = "gpt-5-mini"
     DB_NAME = '/data/akane_v19.db' if os.path.exists("/data") else 'akane_v19.db'
-    MAX_CHAT_TOKENS = 1500
+    
+    # ★修正箇所: 変数名を呼び出し側と一致させました
+    NORMAL_CHAT_MAX_TOKENS = 1500
     DAILY_LIMIT = 100
     
     # 茜ちゃんの性格トリガー
@@ -66,7 +68,7 @@ class DatabaseManager:
             await db.execute('''CREATE TABLE IF NOT EXISTS usage_log (user_id TEXT, date TEXT, count INTEGER DEFAULT 0, UNIQUE(user_id, date))''')
             await db.execute('''CREATE TABLE IF NOT EXISTS starboard_log (message_id INTEGER PRIMARY KEY)''')
             
-            # 設定 (Key-Value形式ではなく、カラム形式で保持)
+            # 設定
             await db.execute('''CREATE TABLE IF NOT EXISTS guild_settings (
                 guild_id INTEGER PRIMARY KEY,
                 welcome_ch INTEGER,
@@ -107,7 +109,6 @@ class DatabaseManager:
 
     # --- 設定関連 ---
     async def set_config(self, guild_id: int, col: str, val: int):
-        # UPSERT (存在すれば更新、なければ挿入)
         current = await self._fetchone("SELECT guild_id FROM guild_settings WHERE guild_id=?", (guild_id,))
         if current:
             await self._execute(f"UPDATE guild_settings SET {col}=? WHERE guild_id=?", (val, guild_id))
@@ -165,7 +166,6 @@ class AiManager:
     async def call_gpt(self, system: str, user: str, max_tokens: int = 1000) -> str:
         if not openai_client: return "APIキーが設定されてへんで！"
         
-        # GPT-5-mini / o1 は reasoning model とみなす (temperature無効)
         is_reasoning = "gpt-5" in self.model or "o1" in self.model
         
         try:
@@ -189,7 +189,6 @@ class AiManager:
             return f"あかん、エラーが出てもうた... ({e})"
 
     async def chat(self, user_name: str, content: str) -> str:
-        # 茜ちゃんの性格プロンプト
         is_high_tension = any(k in content for k in Config.REGULATION_KEYWORDS)
         
         style = "基本的には親しみやすく、友達のような関西弁で振る舞ってください。"
@@ -285,7 +284,6 @@ class AkaneBot(commands.Bot):
         self.add_view(TicketView())
         self.add_view(TicketCloseView())
         
-        # タスク開始
         self.loop_reminders.start()
         self.loop_monthly.start()
 
@@ -296,8 +294,6 @@ class AkaneBot(commands.Bot):
     # --- 定期タスク ---
     @tasks.loop(seconds=60)
     async def loop_reminders(self):
-        # リマインダーチェック (実装簡略化のためDBから全件取得してPython側で判定)
-        # 本番ではSQLで時刻判定する方が良い
         now_str = datetime.now(JST).isoformat()
         rows = await self.db._fetchall("SELECT id, user_id, channel_id, message FROM reminders WHERE end_time <= ?", (now_str,))
         if rows:
@@ -407,7 +403,6 @@ class AkaneBot(commands.Bot):
             msg = await ch.fetch_message(payload.message_id)
             reaction = discord.utils.get(msg.reactions, emoji="❤️")
             if reaction and reaction.count >= 10:
-                # 既に投稿済みか確認
                 posted = await self.db._fetchone("SELECT message_id FROM starboard_log WHERE message_id=?", (msg.id,))
                 if not posted:
                     sb_ch_id = await self.db.get_config(payload.guild_id, "starboard_ch")
@@ -483,172 +478,4 @@ class AdminCommands(app_commands.Group):
         await i.response.send_message(f"殿堂入り先: {channel.mention}", ephemeral=True)
 
     @app_commands.command(name="config_autochat", description="常駐自動応答チャンネル設定")
-    async def config_autochat(self, i: discord.Interaction, channel: discord.TextChannel):
-        await bot.db.set_config(i.guild.id, "auto_chat_ch", channel.id)
-        await i.response.send_message(f"常駐場所: {channel.mention}", ephemeral=True)
-
-    @app_commands.command(name="config_monthly", description="月次ルール通知設定")
-    async def config_monthly(self, i: discord.Interaction, rule_ch: discord.TextChannel, target_ch: discord.TextChannel):
-        async with aiosqlite.connect(bot.db.path) as db:
-            await db.execute("INSERT OR REPLACE INTO monthly_rules (guild_id, rule_ch, target_ch) VALUES (?, ?, ?)", (i.guild.id, rule_ch.id, target_ch.id))
-            await db.commit()
-        await i.response.send_message("月次通知を設定したで。", ephemeral=True)
-
-    @app_commands.command(name="setup_ticket", description="チケットパネル設置")
-    async def setup_ticket(self, i: discord.Interaction):
-        await i.channel.send("📩 サポート窓口", view=TicketView())
-        await i.response.send_message("設置完了", ephemeral=True)
-
-    @app_commands.command(name="rolepanel", description="リアクションロールパネル作成")
-    async def rolepanel(self, i: discord.Interaction, message_id: str, emoji: str, role: discord.Role):
-        try:
-            msg = await i.channel.fetch_message(int(message_id))
-            await msg.add_reaction(emoji)
-            async with aiosqlite.connect(bot.db.path) as db:
-                await db.execute("INSERT INTO reaction_roles (message_id, emoji, role_id) VALUES (?, ?, ?)", (msg.id, emoji, role.id))
-                await db.commit()
-            await i.response.send_message("設定完了", ephemeral=True)
-        except:
-            await i.response.send_message("エラー: IDを確認してな", ephemeral=True)
-
-    @app_commands.command(name="filter_word_add", description="NGワード追加")
-    async def filter_add(self, i: discord.Interaction, word: str):
-        async with aiosqlite.connect(bot.db.path) as db:
-            await db.execute("INSERT INTO ng_words (guild_id, word) VALUES (?, ?)", (i.guild.id, word))
-            await db.commit()
-        await i.response.send_message(f"NG追加: {word}", ephemeral=True)
-
-    @app_commands.command(name="response_add", description="自動応答追加")
-    async def response_add(self, i: discord.Interaction, trigger: str, response: str):
-        async with aiosqlite.connect(bot.db.path) as db:
-            await db.execute("INSERT INTO auto_replies (guild_id, trigger, response) VALUES (?, ?, ?)", (i.guild.id, trigger, response))
-            await db.commit()
-        await i.response.send_message(f"応答追加: {trigger} -> {response}", ephemeral=True)
-
-    @app_commands.command(name="kick", description="Kick")
-    async def kick(self, i: discord.Interaction, member: discord.Member):
-        await member.kick()
-        await i.response.send_message("Kick完了")
-
-    @app_commands.command(name="ban", description="Ban")
-    async def ban(self, i: discord.Interaction, member: discord.Member):
-        await member.ban()
-        await i.response.send_message("Ban完了")
-
-    @app_commands.command(name="purge", description="メッセージ削除")
-    @app_commands.describe(amount="削除数", user="対象ユーザー", hours="対象期間(時間)")
-    async def purge(self, i: discord.Interaction, amount: int, user: Optional[discord.Member]=None, hours: Optional[int]=None):
-        await i.response.defer(ephemeral=True)
-        cutoff = datetime.now(pytz.utc) - timedelta(hours=hours) if hours else None
-        def check(m):
-            if user and m.author != user: return False
-            if cutoff and m.created_at < cutoff: return False
-            return True
-        deleted = await i.channel.purge(limit=min(amount, 300), check=check)
-        await i.followup.send(f"{len(deleted)}件 削除したで。", ephemeral=True)
-
-bot.tree.add_command(AdminCommands())
-
-# --- 一般コマンド ---
-
-@bot.tree.command(name="translate", description="AI翻訳")
-@app_commands.describe(language="翻訳先の言語", text="原文")
-async def translate(i: discord.Interaction, language: str, text: str):
-    await i.response.defer()
-    res = await bot.ai.translate(text, language)
-    await i.followup.send(embed=discord.Embed(title=f"翻訳 ({language})", description=res, color=discord.Color.blue()))
-
-@bot.tree.command(name="define", description="AI辞書 (200文字解説)")
-@app_commands.describe(word="言葉", wiki_mode="Wikipedia優先モード")
-async def define(i: discord.Interaction, word: str, wiki_mode: bool = False):
-    await i.response.defer()
-    res = await bot.ai.define_word(word, wiki_mode)
-    await i.followup.send(embed=discord.Embed(title=f"📖 {word}", description=res, color=discord.Color.green()))
-
-@bot.tree.command(name="summary", description="自分の発言要約")
-@app_commands.describe(back="過去何件遡るか(最大20)")
-async def summary(i: discord.Interaction, back: int):
-    if back > 20: back = 20
-    await i.response.defer(ephemeral=True)
-    msgs = [m.content async for m in i.channel.history(limit=100) if m.author == i.user][:back]
-    if not msgs:
-        await i.followup.send("発言が見つからんかったわ。", ephemeral=True)
-        return
-    msgs.reverse()
-    res = await bot.ai.summarize(msgs)
-    await i.followup.send(embed=discord.Embed(title="📝 発言要約", description=res, color=discord.Color.orange()), ephemeral=True)
-
-@bot.tree.command(name="event", description="イベント(スケジュール)作成")
-async def event(i: discord.Interaction, title: str, date: str, time: str):
-    try:
-        dt_str = f"{date} {time}"
-        dt = datetime.strptime(dt_str, "%Y/%m/%d %H:%M").replace(tzinfo=JST)
-        ts = int(dt.timestamp())
-        embed = discord.Embed(title=f"📅 {title}", description=f"日時: <t:{ts}:F>", color=discord.Color.green())
-        embed.add_field(name="参加", value="なし"); embed.add_field(name="不参加", value="なし")
-        await i.response.send_message(embed=embed, view=EventView())
-        try:
-            await i.guild.create_scheduled_event(name=title, start_time=dt, end_time=dt+timedelta(hours=2), location="Discord", entity_type=discord.EntityType.external, privacy_level=discord.PrivacyLevel.guild_only)
-        except: pass
-    except:
-        await i.response.send_message("日時は `YYYY/MM/DD HH:MM` で頼むで！", ephemeral=True)
-
-@bot.tree.command(name="poll", description="投票作成")
-async def poll(i: discord.Interaction, question: str, option1: str, option2: str, option3: Optional[str]=None, option4: Optional[str]=None):
-    opts = [o for o in [option1, option2, option3, option4] if o]
-    emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"]
-    desc = "\n".join([f"{emojis[idx]} {opt}" for idx, opt in enumerate(opts)])
-    await i.response.send_message(f"📊 **{question}** #投票", embed=discord.Embed(description=desc, color=discord.Color.gold()))
-    msg = await i.original_response()
-    for idx in range(len(opts)): await msg.add_reaction(emojis[idx])
-
-@bot.tree.command(name="search", description="高度なメッセージ検索")
-@app_commands.describe(keyword="検索語句", target_channel="対象ch", member="投稿者", days="過去何日以内")
-async def search(i: discord.Interaction, keyword: str, target_channel: Optional[discord.TextChannel]=None, member: Optional[discord.Member]=None, days: Optional[int]=None):
-    await i.response.defer(ephemeral=True)
-    ch = target_channel if target_channel else i.channel
-    after = datetime.now(pytz.utc) - timedelta(days=days) if days else None
-    
-    found = []
-    try:
-        async for m in ch.history(limit=1000, after=after):
-            if member and m.author != member: continue
-            if keyword in m.content:
-                found.append(m)
-                if len(found) >= 100: break
-    except: pass
-
-    if not found:
-        await i.followup.send("見つからへんかったわ。", ephemeral=True)
-        return
-
-    if len(found) > 20:
-        txt = "\n".join([f"[{m.created_at}] {m.author}: {m.content}" for m in found])
-        await i.followup.send(f"{len(found)}件あったからファイルにするな。", file=discord.File(io.BytesIO(txt.encode()), "result.txt"), ephemeral=True)
-    else:
-        desc = "\n".join([f"• [{m.content[:30]}]({m.jump_url})" for m in found])
-        await i.followup.send(embed=discord.Embed(title=f"検索: {keyword}", description=desc), ephemeral=True)
-
-@bot.tree.command(name="level", description="レベル確認")
-async def level(i: discord.Interaction):
-    lv, xp = await bot.db.get_user_data(i.user.id)
-    await i.response.send_message(f"📊 Lv.{lv} (XP: {xp})", ephemeral=True)
-
-@bot.tree.command(name="leaderboard", description="ランキング(TOP30)")
-async def leaderboard(i: discord.Interaction):
-    await i.response.defer(ephemeral=True)
-    rows = await bot.db.get_leaderboard(30)
-    text = ""
-    for idx, (uid, lv, xp) in enumerate(rows, 1):
-        u = i.guild.get_member(uid)
-        name = u.display_name if u else "Unknown"
-        text += f"{idx}. {name} (Lv.{lv})\n"
-    await i.followup.send(embed=discord.Embed(title="🏆 ランキング", description=text or "データなし", color=discord.Color.gold()), ephemeral=True)
-
-@bot.tree.command(name="remind", description="リマインダー")
-async def remind(i: discord.Interaction, minutes: int, message: str):
-    await bot.db.add_reminder(i.user.id, i.channel.id, message, minutes)
-    await i.response.send_message(f"{minutes}分後に通知するで。", ephemeral=True)
-
-if __name__ == '__main__':
-    if DISCORD_TOKEN: bot.run(DISCORD_TOKEN)
+    async def
