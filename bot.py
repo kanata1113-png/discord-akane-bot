@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 import openai
+from openai import OpenAI
 import os
 import asyncio
 import aiosqlite
@@ -31,14 +32,17 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 JST = pytz.timezone('Asia/Tokyo')
 
 class Config:
+    # メインの頭脳（チャット用）
     GPT_MODEL = "gpt-5-mini"
-    DB_NAME = '/data/akane_v22.db' if os.path.exists("/data") else 'akane_v22.db'
+    # サブの頭脳（辞書・翻訳用：高速・安定）
+    FAST_MODEL = "gpt-4o"
     
-    # 少し多めに確保するが、プロンプトで文字数を制限する
+    DB_NAME = '/data/akane_v23.db' if os.path.exists("/data") else 'akane_v23.db'
+    
     NORMAL_CHAT_MAX_TOKENS = 1500
     DAILY_LIMIT = 100
     
-    # タイムアウト対策の定型文
+    # タイムアウト対策
     TIMEOUT_MSG = "せっかく話しかけてもらったんやけど、君の質問に答えようと思うとちょっと時間がかかりそうやわ。よかったらもう少し茜が答えやすいようにもっかいやり直してもろてええか？ 頼むわ🙏✨"
     
     REGULATION_KEYWORDS = ['表現規制', '規制', '検閲', '制限', '禁止', '表現の自由', '言論統制', '弾圧', 'ポリコレ']
@@ -51,8 +55,8 @@ class Config:
     }
 
 if OPENAI_API_KEY:
-    # タイムアウトを少し長めに設定
-    openai_client = openai.OpenAI(api_key=OPENAI_API_KEY, timeout=45.0)
+    # タイムアウトを60秒に設定
+    openai_client = openai.OpenAI(api_key=OPENAI_API_KEY, timeout=60.0)
 else:
     openai_client = None
     logger.warning("OpenAI API Key is missing.")
@@ -137,30 +141,35 @@ class DatabaseManager:
 
 class AiManager:
     def __init__(self):
-        self.model = Config.GPT_MODEL
+        pass
 
-    async def call_gpt(self, system: str, user: str, max_tokens: int = 1000) -> str:
+    # ★修正: モデルを指定できるように変更 (デフォルトはConfig.GPT_MODEL)
+    async def call_gpt(self, system: str, user: str, model: str = Config.GPT_MODEL, max_tokens: int = 1000) -> str:
         if not openai_client: return "APIキーが設定されてへんで！"
-        is_reasoning = "gpt-5" in self.model or "o1" in self.model
+        
+        # 推論モデル判定
+        is_reasoning = "gpt-5" in model or "o1" in model
         
         try:
-            params = {"model": self.model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+            params = {"model": model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+            
             if is_reasoning:
                 params["max_completion_tokens"] = max_tokens
                 params["reasoning_effort"] = "medium"
             else:
                 params["max_tokens"] = max_tokens
-                params["temperature"] = 0.7
+                params["temperature"] = 0.7 # 通常モデルは少し創造的に
             
             loop = asyncio.get_running_loop()
-            # ★修正: タイムアウト例外をキャッチできるようにする
             resp = await loop.run_in_executor(None, lambda: openai_client.chat.completions.create(**params))
             return resp.choices[0].message.content
             
         except Exception as e:
-            # エラー内容をログに出しつつ、指定の定型文を返す
             logger.error(f"AI Error: {e}")
-            return Config.TIMEOUT_MSG
+            # タイムアウトやエラー時はNoneを返さず、エラーメッセージを返す
+            if "timed out" in str(e).lower():
+                return Config.TIMEOUT_MSG
+            return "" # 空文字を返して呼び出し元で処理させる
 
     async def chat(self, user_name: str, content: str) -> str:
         is_high = any(k in content for k in Config.REGULATION_KEYWORDS)
@@ -170,20 +179,39 @@ class AiManager:
             f"一人称は「茜」。ユーザー名は「{user_name}」。\n{style}\n"
             "ルール：1. 日本語・関西弁で話す。 2. 回答は1000文字以内。 3. 長くなりそうな場合は途中で切り上げ「まだ話し足りないけど、字数の制限があるからいったんここらで切り上げるわ！気になることがあったらまた声をかけてな！」と添える。"
         )
-        return await self.call_gpt(system, content, max_tokens=Config.NORMAL_CHAT_MAX_TOKENS)
+        # チャットは賢いモデルを使う
+        return await self.call_gpt(system, content, model=Config.GPT_MODEL, max_tokens=Config.NORMAL_CHAT_MAX_TOKENS)
 
     async def translate(self, text: str, target_lang: str) -> str:
-        return await self.call_gpt(f"Translate to {target_lang}. Output ONLY the translated text.", text)
+        # 翻訳は高速モデルで十分
+        return await self.call_gpt(
+            f"Translate to {target_lang}. Output ONLY the translated text.", 
+            text, 
+            model=Config.FAST_MODEL,
+            max_tokens=1000
+        )
 
+    # ★修正: 辞書機能の強化
     async def define_word(self, word: str, wiki_mode: bool) -> str:
-        sys = f"あなたは親切な辞書です。「{word}」について、200文字程度で簡潔に要約して解説してください。"
-        if wiki_mode: sys = f"あなたはWikipediaの要約係です。「{word}」について、Wikipediaの記事内容のみをソースとして参照し、その内容を400文字以内で簡潔に要約して解説してください。"
+        if wiki_mode:
+            sys = f"あなたはWikipediaの要約アシスタントです。「{word}」について、Wikipediaの記事内容のような客観的な事実に基づき、400文字以内で簡潔に要約してください。"
+        else:
+            sys = f"あなたは高性能な辞書です。「{word}」という言葉の意味を、400文字以内で分かりやすく解説してください。"
         
-        sys += "\n【重要】文章が途中で切れないよう、必ず文を完結させてください。"
-        return await self.call_gpt(sys, word, max_tokens=1500)
+        sys += "\n【重要】必ず文章を完結させてください。途中で切れてはいけません。"
+        
+        # ★重要: ここで高速・安定な FAST_MODEL (gpt-4o) を使用する
+        # 推論モデルの「考えすぎ」によるタイムアウトを防ぐ
+        return await self.call_gpt(sys, word, model=Config.FAST_MODEL, max_tokens=1000)
 
     async def summarize(self, text_list: List[str]) -> str:
-        return await self.call_gpt("以下の発言ログを400文字以内で要約して。一人称「茜」、関西弁で。", "\n".join(text_list), max_tokens=800)
+        # 要約は賢いモデルの方が良い
+        return await self.call_gpt(
+            "以下の発言ログを400文字以内で要約して。一人称「茜」、関西弁で。", 
+            "\n".join(text_list), 
+            model=Config.GPT_MODEL, 
+            max_tokens=800
+        )
 
 # --- UI Views ---
 class EventView(discord.ui.View):
@@ -416,6 +444,7 @@ class AkaneBot(commands.Bot):
                 if clean_text:
                     async with message.channel.typing():
                         reply = await self.ai.chat(message.author.display_name, clean_text)
+                        # ファイル出力判定 (1900文字超え)
                         if len(reply) > 1900:
                             f = discord.File(io.BytesIO(reply.encode()), filename="reply.txt")
                             await message.reply("長くなったからファイルにしたで！", file=f)
@@ -517,23 +546,22 @@ async def translate(i: discord.Interaction, language: str, text: str):
     res = await bot.ai.translate(text, language)
     await i.followup.send(embed=discord.Embed(title=f"翻訳 ({language})", description=res, color=discord.Color.blue()))
 
-# ★修正: 辞書機能 (空文字チェック & 埋め込みエラー対策)
 @bot.tree.command(name="define", description="AI辞書 (400文字解説)")
 @app_commands.describe(word="言葉", wiki_mode="Wikipedia優先モード")
 async def define(i: discord.Interaction, word: str, wiki_mode: bool = False):
     await i.response.defer()
+    
+    # 辞書機能は高速なモデルを使用
     res = await bot.ai.define_word(word, wiki_mode)
     
-    if not res or res.strip() == "":
+    if not res:
         await i.followup.send("ごめん、うまく解説できへんかったわ。", ephemeral=True)
         return
-
-    title = f"📖 辞書: {word}" + (" (Wiki Mode)" if wiki_mode else "")
     
-    # Embedの制限 (4096文字) を超えないようにカット
-    if len(res) > 4000:
-        res = res[:4000] + "..."
-        
+    # 4000文字カット (Embed制限)
+    if len(res) > 4000: res = res[:4000] + "..."
+    
+    title = f"📖 辞書: {word}" + (" (Wiki Mode)" if wiki_mode else "")
     embed = discord.Embed(title=title, description=res, color=discord.Color.green())
     embed.set_footer(text="Powered by AI Dictionary")
     await i.followup.send(embed=embed)
