@@ -32,7 +32,7 @@ JST = pytz.timezone('Asia/Tokyo')
 
 class Config:
     GPT_MODEL = "gpt-5-mini"
-    DB_NAME = '/data/akane_v20.db' if os.path.exists("/data") else 'akane_v20.db'
+    DB_NAME = '/data/akane_v21.db' if os.path.exists("/data") else 'akane_v21.db'
     
     NORMAL_CHAT_MAX_TOKENS = 1500
     DAILY_LIMIT = 100
@@ -165,13 +165,18 @@ class AiManager:
     async def translate(self, text: str, target_lang: str) -> str:
         return await self.call_gpt(f"Translate to {target_lang}. Output ONLY translated text.", text)
 
-    # ★修正: 辞書機能 (400文字制限 & Wikiモード)
+    # ★修正: 辞書機能 (トークン数増量 & 完結指示)
     async def define_word(self, word: str, wiki_mode: bool) -> str:
-        if wiki_mode:
-            sys = f"あなたはWikipediaの要約係です。「{word}」について、Wikipediaの記事内容のみをソースとして参照し、その内容を400文字以内で簡潔に要約して解説してください。"
-        else:
-            sys = f"あなたは親切な辞書です。「{word}」という言葉の意味を、400文字以内で簡潔に要約して解説してください。"
-        return await self.call_gpt(sys, word, max_tokens=600) # 出力制限のためトークン数も絞る
+        limit_instruction = "400文字程度で簡潔に要約"
+        source_instruction = "Wikipediaの記事内容のみをソースとして参照し、" if wiki_mode else ""
+        
+        sys = (
+            f"あなたは親切な辞書です。「{word}」について、{source_instruction}"
+            f"{limit_instruction}して解説してください。\n"
+            "【重要】文章が途中で切れないよう、必ず文を完結させてください。"
+        )
+        # 途切れ防止のためmax_tokensを十分に確保 (文字数制限はプロンプトで制御)
+        return await self.call_gpt(sys, word, max_tokens=1500)
 
     async def summarize(self, text_list: List[str]) -> str:
         return await self.call_gpt("以下の発言ログを400文字以内で要約して。一人称「茜」、関西弁で。", "\n".join(text_list), max_tokens=800)
@@ -219,14 +224,13 @@ class TicketCloseView(discord.ui.View):
         await i.channel.delete()
 
 # ==============================================================================
-# 2. Admin Command Group (管理コマンド)
+# 2. Admin Command Group
 # ==============================================================================
 class AdminCommands(app_commands.Group):
     def __init__(self, bot):
         super().__init__(name="admin", description="サーバー管理コマンド")
         self.bot = bot
 
-    # --- 設定 ---
     @app_commands.command(name="config_log", description="監査ログ設定")
     async def config_log(self, i: discord.Interaction, channel: discord.TextChannel):
         await self.bot.db.set_config(i.guild.id, "log_ch", channel.id)
@@ -252,7 +256,6 @@ class AdminCommands(app_commands.Group):
         await self.bot.db._execute("INSERT OR REPLACE INTO monthly_rules (guild_id, rule_ch, target_ch) VALUES (?, ?, ?)", (i.guild.id, rule_ch.id, target_ch.id))
         await i.response.send_message("月次通知を設定したで。", ephemeral=True)
 
-    # --- 機能追加 ---
     @app_commands.command(name="setup_ticket", description="チケット設置")
     async def setup_ticket(self, i: discord.Interaction):
         await i.channel.send("📩 サポート窓口", view=TicketView())
@@ -268,7 +271,6 @@ class AdminCommands(app_commands.Group):
         except:
             await i.response.send_message("エラー: IDを確認してな", ephemeral=True)
 
-    # ★追加: レベル報酬管理
     @app_commands.command(name="level_reward", description="レベル報酬設定")
     @app_commands.describe(level="到達レベル", role="付与するロール")
     async def level_reward(self, i: discord.Interaction, level: int, role: discord.Role):
@@ -289,7 +291,6 @@ class AdminCommands(app_commands.Group):
         text = "\n".join([f"Lv.{r[0]} -> <@&{r[1]}>" for r in rows])
         await i.response.send_message(embed=discord.Embed(title="レベル報酬一覧", description=text), ephemeral=True)
 
-    # --- その他 ---
     @app_commands.command(name="filter_add", description="NGワード追加")
     async def filter_add(self, i: discord.Interaction, word: str):
         await self.bot.db._execute("INSERT INTO ng_words (guild_id, word) VALUES (?, ?)", (i.guild.id, word))
@@ -339,7 +340,6 @@ class AkaneBot(commands.Bot):
         self.add_view(TicketView())
         self.add_view(TicketCloseView())
         
-        # Adminコマンド登録
         self.tree.add_command(AdminCommands(self))
         
         self.loop_reminders.start()
@@ -587,7 +587,6 @@ async def level(i: discord.Interaction):
     lv, xp = await bot.db.get_user_data(i.user.id)
     await i.response.send_message(f"📊 Lv.{lv} (XP: {xp})", ephemeral=True)
 
-# ★修正: 上位30名・Ephemeral
 @bot.tree.command(name="leaderboard", description="ランキング(TOP30)")
 async def leaderboard(i: discord.Interaction):
     await i.response.defer(ephemeral=True)
