@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 import openai
+from openai import OpenAI
 import os
 import asyncio
 import aiosqlite
@@ -32,9 +33,8 @@ JST = pytz.timezone('Asia/Tokyo')
 
 class Config:
     GPT_MODEL = "gpt-5-mini"
-    FAST_MODEL = "gpt-4o" # 辞書・翻訳用
-    
-    DB_NAME = '/data/akane_v23.db' if os.path.exists("/data") else 'akane_v23.db'
+    FAST_MODEL = "gpt-4o"
+    DB_NAME = '/data/akane_v26.db' if os.path.exists("/data") else 'akane_v26.db'
     
     NORMAL_CHAT_MAX_TOKENS = 1500
     DAILY_LIMIT = 100
@@ -42,7 +42,7 @@ class Config:
     # 定型文
     TIMEOUT_MSG = "せっかく話しかけてもらったんやけど、君の質問に答えようと思うとちょっと時間がかかりそうやわ。よかったらもう少し茜が答えやすいようにもっかいやり直してもろてええか？ 頼むわ🙏✨"
     ERROR_MSG = "ごめん、ちょっと調子悪いみたいでうまく答えられへんかったわ... (エラー発生)"
-    EMPTY_MSG = "（...言葉が見つからへんみたいや。もう一回言うてみて？）"
+    EMPTY_MSG = "（...言葉が見つからへんみたいや。もう一回試してみて？）"
 
     REGULATION_KEYWORDS = ['表現規制', '規制', '検閲', '制限', '禁止', '表現の自由', '言論統制', '弾圧', 'ポリコレ']
     
@@ -60,7 +60,7 @@ else:
     logger.warning("OpenAI API Key is missing.")
 
 # ==============================================================================
-# 1. データベース管理
+# 1. データベース & AI & Views
 # ==============================================================================
 
 class DatabaseManager:
@@ -137,9 +137,6 @@ class DatabaseManager:
         else: await self._execute("INSERT INTO usage_log (user_id, date, count) VALUES (?, ?, 1)", (user_id, today))
         return True
 
-# ==============================================================================
-# 2. AIロジック (AiManager)
-# ==============================================================================
 class AiManager:
     def __init__(self):
         self.model = Config.GPT_MODEL
@@ -163,6 +160,7 @@ class AiManager:
             resp = await loop.run_in_executor(None, lambda: openai_client.chat.completions.create(**params))
             
             content = resp.choices[0].message.content
+            # ★重要: AIが空文字を返してきた場合
             if content is None or len(content.strip()) == 0:
                 return Config.EMPTY_MSG
             return content
@@ -197,41 +195,26 @@ class AiManager:
     async def summarize(self, text_list: List[str]) -> str:
         return await self.call_gpt("以下の発言ログを400文字以内で要約して。一人称「茜」、関西弁で。", "\n".join(text_list), model=Config.GPT_MODEL, max_tokens=800)
 
-# ==============================================================================
-# 3. UI Views (修正: イベント機能強化版)
-# ==============================================================================
+# --- UI Views ---
 class EventView(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
-    
-    async def _update_embed(self, interaction: discord.Interaction, action: str):
-        embed = interaction.message.embeds[0]
-        new_embed = discord.Embed(title=embed.title, description=embed.description, color=embed.color, timestamp=embed.timestamp)
-        if embed.footer: new_embed.set_footer(text=embed.footer.text)
-        
-        user_mention = interaction.user.mention
-        target_field = f"【{action}】"
-        
-        for field in embed.fields:
-            # 現在のリストを取得（自分と「なし」を除外）
-            lines = []
-            if field.value and field.value != "なし":
-                lines = [l.strip() for l in field.value.split('\n') if user_mention not in l and "なし" not in l]
-            
-            # ターゲットのフィールドなら自分を追加
-            if field.name == target_field:
-                lines.append(f"• {user_mention}")
-            
-            # フィールド再構築
-            new_value = "\n".join(lines) if lines else "なし"
-            new_embed.add_field(name=field.name, value=new_value, inline=True)
-            
-        await interaction.response.edit_message(embed=new_embed)
-
+    async def _update(self, i, status):
+        embed = i.message.embeds[0]
+        new_fields = []
+        target = f"【{status}】"
+        for f in embed.fields:
+            vals = [l for l in f.value.split('\n') if i.user.mention not in l and "なし" not in l]
+            if f.name == target: vals.append(f"• {i.user.mention}")
+            new_fields.append((f.name, '\n'.join(vals) or "なし"))
+        new_embed = discord.Embed(title=embed.title, description=embed.description, color=embed.color)
+        new_embed.set_footer(text=embed.footer.text)
+        new_embed.timestamp = embed.timestamp
+        for n, v in new_fields: new_embed.add_field(name=n, value=v)
+        await i.response.edit_message(embed=new_embed)
     @discord.ui.button(label="参加", style=discord.ButtonStyle.success, custom_id="ev_join")
-    async def join(self, i, b): await self._update_embed(i, "参加")
-    
+    async def join(self, i, b): await self._update(i, "参加")
     @discord.ui.button(label="不参加", style=discord.ButtonStyle.danger, custom_id="ev_leave")
-    async def leave(self, i, b): await self._update_embed(i, "不参加")
+    async def leave(self, i, b): await self._update(i, "不参加")
 
 class TicketView(discord.ui.View):
     def __init__(self): super().__init__(timeout=None)
@@ -255,7 +238,7 @@ class TicketCloseView(discord.ui.View):
         await i.channel.delete()
 
 # ==============================================================================
-# 4. Admin Command Group
+# 2. Admin Command Group
 # ==============================================================================
 class AdminCommands(app_commands.Group):
     def __init__(self, bot):
@@ -355,7 +338,7 @@ class AdminCommands(app_commands.Group):
         await i.followup.send(f"{len(deleted)}件 削除したで。", ephemeral=True)
 
 # ==============================================================================
-# 5. Bot本体 (Main Class)
+# 3. Bot本体 (Main Class)
 # ==============================================================================
 class AkaneBot(commands.Bot):
     def __init__(self):
@@ -444,7 +427,6 @@ class AkaneBot(commands.Bot):
                     async with message.channel.typing():
                         reply = await self.ai.chat(message.author.display_name, clean_text)
                         
-                        # ★空文字チェック
                         if not reply or reply.strip() == "":
                             reply = Config.EMPTY_MSG
 
@@ -472,7 +454,7 @@ class AkaneBot(commands.Bot):
         if row:
             role = payload.member.guild.get_role(row[0])
             if role: await payload.member.add_roles(role)
-        # Translation
+        # Translation (Embed対策済み)
         if str(payload.emoji) in Config.FLAG_MAP:
             ch = self.get_channel(payload.channel_id)
             msg = await ch.fetch_message(payload.message_id)
@@ -481,10 +463,17 @@ class AkaneBot(commands.Bot):
                 trans = await self.ai.translate(msg.content, lang)
                 
                 if not trans or trans.strip() == "": trans = Config.ERROR_MSG
-                
-                embed = discord.Embed(title=f"🌐 翻訳 ({lang})", description=trans, color=discord.Color.blue())
-                try: await payload.member.send(embed=embed)
-                except: pass
+
+                if len(trans) > 4000:
+                     f = discord.File(io.BytesIO(trans.encode()), filename="trans.txt")
+                     try: await payload.member.send("長すぎるからファイルにするな！", file=f)
+                     except: pass
+                else:
+                    embed = discord.Embed(title=f"🌐 翻訳 ({lang})", description=trans, color=discord.Color.blue())
+                    embed.set_footer(text="原文: " + (msg.content[:50] + "..." if len(msg.content) > 50 else msg.content))
+                    try: await payload.member.send(embed=embed)
+                    except: pass
+
         # Starboard
         if str(payload.emoji) == "❤️":
             ch = self.get_channel(payload.channel_id)
@@ -542,31 +531,45 @@ class AkaneBot(commands.Bot):
 bot = AkaneBot()
 
 # ==============================================================================
-# 6. 一般コマンド群 (修正版)
+# 5. 一般コマンド群
 # ==============================================================================
 
+# ★修正: AI翻訳 (Embed対策済み)
 @bot.tree.command(name="translate", description="AI翻訳")
 @app_commands.describe(language="翻訳先の言語", text="原文")
 async def translate(i: discord.Interaction, language: str, text: str):
     await i.response.defer()
     res = await bot.ai.translate(text, language)
+    
     if not res or res.strip() == "": res = Config.ERROR_MSG
-    await i.followup.send(embed=discord.Embed(title=f"翻訳 ({language})", description=res, color=discord.Color.blue()))
+    
+    if len(res) > 4000:
+        f = discord.File(io.BytesIO(res.encode()), filename="trans.txt")
+        await i.followup.send("長すぎるからファイルにするな！", file=f)
+    else:
+        await i.followup.send(embed=discord.Embed(title=f"翻訳 ({language})", description=res, color=discord.Color.blue()))
 
 @bot.tree.command(name="define", description="AI辞書 (400文字解説)")
 @app_commands.describe(word="言葉", wiki_mode="Wikipedia優先モード")
 async def define(i: discord.Interaction, word: str, wiki_mode: bool = False):
     await i.response.defer()
     res = await bot.ai.define_word(word, wiki_mode)
+    
     if not res or res.strip() == "":
         await i.followup.send(Config.ERROR_MSG, ephemeral=True)
         return
-    if len(res) > 4000: res = res[:4000] + "..."
+
+    if len(res) > 4000: 
+        f = discord.File(io.BytesIO(res.encode()), filename="define.txt")
+        await i.followup.send("長すぎるからファイルにするな！", file=f)
+        return
+
     title = f"📖 辞書: {word}" + (" (Wiki Mode)" if wiki_mode else "")
     embed = discord.Embed(title=title, description=res, color=discord.Color.green())
     embed.set_footer(text="Powered by AI Dictionary")
     await i.followup.send(embed=embed)
 
+# ★修正: 発言要約 (Embed対策済み)
 @bot.tree.command(name="summary", description="自分の発言要約")
 @app_commands.describe(back="過去何件遡るか(最大20)")
 async def summary(i: discord.Interaction, back: int):
@@ -578,47 +581,29 @@ async def summary(i: discord.Interaction, back: int):
         return
     msgs.reverse()
     res = await bot.ai.summarize(msgs)
+    
     if not res or res.strip() == "": res = Config.ERROR_MSG
-    await i.followup.send(embed=discord.Embed(title="📝 発言要約", description=res, color=discord.Color.orange()), ephemeral=True)
+    
+    if len(res) > 4000:
+        f = discord.File(io.BytesIO(res.encode()), filename="summary.txt")
+        await i.followup.send("長すぎるからファイルにするな！", file=f)
+    else:
+        await i.followup.send(embed=discord.Embed(title="📝 発言要約", description=res, color=discord.Color.orange()), ephemeral=True)
 
 @bot.tree.command(name="event", description="イベント(スケジュール)作成")
-@app_commands.describe(title="イベント名", date="日付 (例: 12/31)", time="時間 (例: 21:00)")
 async def event(i: discord.Interaction, title: str, date: str, time: str):
     try:
-        # 日付補正ロジック
-        date = date.replace('-', '/').replace('.', '/')
-        time = time.replace('：', ':')
-        now = datetime.now(JST)
-        parts = date.split('/')
-        
-        if len(parts) == 2: # MM/DD
-            date_str = f"{now.year}/{parts[0]}/{parts[1]} {time}"
-            dt_naive = datetime.strptime(date_str, "%Y/%m/%d %H:%M")
-            if dt_naive < now.replace(tzinfo=None): # 過去なら来年
-                date_str = f"{now.year + 1}/{parts[0]}/{parts[1]} {time}"
-                dt_naive = datetime.strptime(date_str, "%Y/%m/%d %H:%M")
-        else: # YYYY/MM/DD
-            date_str = f"{date} {time}"
-            dt_naive = datetime.strptime(date_str, "%Y/%m/%d %H:%M")
-
-        dt_aware = JST.localize(dt_naive)
-        ts = int(dt_aware.timestamp())
-
-        embed = discord.Embed(title=f"📅 {title}", description=f"日時: <t:{ts}:F> (<t:{ts}:R>)", color=discord.Color.green())
-        embed.add_field(name="【参加】", value="なし", inline=True)
-        embed.add_field(name="【不参加】", value="なし", inline=True)
-        embed.set_footer(text=f"作成者: {i.user.display_name}")
-
+        dt_str = f"{date} {time}"
+        dt = datetime.strptime(dt_str, "%Y/%m/%d %H:%M").replace(tzinfo=JST)
+        ts = int(dt.timestamp())
+        embed = discord.Embed(title=f"📅 {title}", description=f"日時: <t:{ts}:F>", color=discord.Color.green())
+        embed.add_field(name="参加", value="なし"); embed.add_field(name="不参加", value="なし")
         await i.response.send_message(embed=embed, view=EventView())
-
         try:
-            await i.guild.create_scheduled_event(
-                name=title, start_time=dt_aware, end_time=dt_aware+timedelta(hours=2),
-                location="Discord (詳細はチャンネルにて)", entity_type=discord.EntityType.external, privacy_level=discord.PrivacyLevel.guild_only
-            )
+            await i.guild.create_scheduled_event(name=title, start_time=dt, end_time=dt+timedelta(hours=2), location="Discord", entity_type=discord.EntityType.external, privacy_level=discord.PrivacyLevel.guild_only)
         except: pass
-    except ValueError:
-        await i.response.send_message("日時の形式がおかしいで。\n例: `12/31 21:00`", ephemeral=True)
+    except:
+        await i.response.send_message("日時は `YYYY/MM/DD HH:MM` で頼むで！", ephemeral=True)
 
 @bot.tree.command(name="poll", description="投票作成")
 async def poll(i: discord.Interaction, question: str, option1: str, option2: str, option3: Optional[str]=None, option4: Optional[str]=None):
