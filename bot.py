@@ -32,10 +32,14 @@ JST = pytz.timezone('Asia/Tokyo')
 
 class Config:
     GPT_MODEL = "gpt-5-mini"
-    DB_NAME = '/data/akane_v21.db' if os.path.exists("/data") else 'akane_v21.db'
+    DB_NAME = '/data/akane_v22.db' if os.path.exists("/data") else 'akane_v22.db'
     
+    # 少し多めに確保するが、プロンプトで文字数を制限する
     NORMAL_CHAT_MAX_TOKENS = 1500
     DAILY_LIMIT = 100
+    
+    # タイムアウト対策の定型文
+    TIMEOUT_MSG = "せっかく話しかけてもらったんやけど、君の質問に答えようと思うとちょっと時間がかかりそうやわ。よかったらもう少し茜が答えやすいようにもっかいやり直してもろてええか？ 頼むわ🙏✨"
     
     REGULATION_KEYWORDS = ['表現規制', '規制', '検閲', '制限', '禁止', '表現の自由', '言論統制', '弾圧', 'ポリコレ']
     
@@ -47,7 +51,8 @@ class Config:
     }
 
 if OPENAI_API_KEY:
-    openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
+    # タイムアウトを少し長めに設定
+    openai_client = openai.OpenAI(api_key=OPENAI_API_KEY, timeout=45.0)
 else:
     openai_client = None
     logger.warning("OpenAI API Key is missing.")
@@ -137,6 +142,7 @@ class AiManager:
     async def call_gpt(self, system: str, user: str, max_tokens: int = 1000) -> str:
         if not openai_client: return "APIキーが設定されてへんで！"
         is_reasoning = "gpt-5" in self.model or "o1" in self.model
+        
         try:
             params = {"model": self.model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
             if is_reasoning:
@@ -145,12 +151,16 @@ class AiManager:
             else:
                 params["max_tokens"] = max_tokens
                 params["temperature"] = 0.7
+            
             loop = asyncio.get_running_loop()
+            # ★修正: タイムアウト例外をキャッチできるようにする
             resp = await loop.run_in_executor(None, lambda: openai_client.chat.completions.create(**params))
             return resp.choices[0].message.content
+            
         except Exception as e:
+            # エラー内容をログに出しつつ、指定の定型文を返す
             logger.error(f"AI Error: {e}")
-            return f"あかん、エラーや... ({e})"
+            return Config.TIMEOUT_MSG
 
     async def chat(self, user_name: str, content: str) -> str:
         is_high = any(k in content for k in Config.REGULATION_KEYWORDS)
@@ -158,24 +168,18 @@ class AiManager:
         system = (
             f"あなたは「表自派茜（ひょうじは あかね）」という元気な関西弁の女子高生AIです。\n"
             f"一人称は「茜」。ユーザー名は「{user_name}」。\n{style}\n"
-            "ルール：1. 日本語・関西弁で話す。 2. 回答は1000文字以内。 3. 長くなりそうな場合は途中で切り上げ「まだ話し足りないけど、字数の制限があるからいったんここらで切り上げるわ！」と添える。"
+            "ルール：1. 日本語・関西弁で話す。 2. 回答は1000文字以内。 3. 長くなりそうな場合は途中で切り上げ「まだ話し足りないけど、字数の制限があるからいったんここらで切り上げるわ！気になることがあったらまた声をかけてな！」と添える。"
         )
         return await self.call_gpt(system, content, max_tokens=Config.NORMAL_CHAT_MAX_TOKENS)
 
     async def translate(self, text: str, target_lang: str) -> str:
-        return await self.call_gpt(f"Translate to {target_lang}. Output ONLY translated text.", text)
+        return await self.call_gpt(f"Translate to {target_lang}. Output ONLY the translated text.", text)
 
-    # ★修正: 辞書機能 (トークン数増量 & 完結指示)
     async def define_word(self, word: str, wiki_mode: bool) -> str:
-        limit_instruction = "400文字程度で簡潔に要約"
-        source_instruction = "Wikipediaの記事内容のみをソースとして参照し、" if wiki_mode else ""
+        sys = f"あなたは親切な辞書です。「{word}」について、200文字程度で簡潔に要約して解説してください。"
+        if wiki_mode: sys = f"あなたはWikipediaの要約係です。「{word}」について、Wikipediaの記事内容のみをソースとして参照し、その内容を400文字以内で簡潔に要約して解説してください。"
         
-        sys = (
-            f"あなたは親切な辞書です。「{word}」について、{source_instruction}"
-            f"{limit_instruction}して解説してください。\n"
-            "【重要】文章が途中で切れないよう、必ず文を完結させてください。"
-        )
-        # 途切れ防止のためmax_tokensを十分に確保 (文字数制限はプロンプトで制御)
+        sys += "\n【重要】文章が途中で切れないよう、必ず文を完結させてください。"
         return await self.call_gpt(sys, word, max_tokens=1500)
 
     async def summarize(self, text_list: List[str]) -> str:
@@ -513,12 +517,23 @@ async def translate(i: discord.Interaction, language: str, text: str):
     res = await bot.ai.translate(text, language)
     await i.followup.send(embed=discord.Embed(title=f"翻訳 ({language})", description=res, color=discord.Color.blue()))
 
+# ★修正: 辞書機能 (空文字チェック & 埋め込みエラー対策)
 @bot.tree.command(name="define", description="AI辞書 (400文字解説)")
-@app_commands.describe(word="言葉", wiki="Wikipediaモード(Wiki記事をソースに要約)")
-async def define(i: discord.Interaction, word: str, wiki: bool = False):
+@app_commands.describe(word="言葉", wiki_mode="Wikipedia優先モード")
+async def define(i: discord.Interaction, word: str, wiki_mode: bool = False):
     await i.response.defer()
-    res = await bot.ai.define_word(word, wiki)
-    title = f"📖 辞書: {word}" + (" (Wiki Mode)" if wiki else "")
+    res = await bot.ai.define_word(word, wiki_mode)
+    
+    if not res or res.strip() == "":
+        await i.followup.send("ごめん、うまく解説できへんかったわ。", ephemeral=True)
+        return
+
+    title = f"📖 辞書: {word}" + (" (Wiki Mode)" if wiki_mode else "")
+    
+    # Embedの制限 (4096文字) を超えないようにカット
+    if len(res) > 4000:
+        res = res[:4000] + "..."
+        
     embed = discord.Embed(title=title, description=res, color=discord.Color.green())
     embed.set_footer(text="Powered by AI Dictionary")
     await i.followup.send(embed=embed)
