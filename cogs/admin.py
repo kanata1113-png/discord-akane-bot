@@ -35,10 +35,6 @@ class AdminCommands(app_commands.Group):
         interaction: discord.Interaction
     ) -> bool:
 
-        # ----------------------------------------------------------------------
-        # DMでは使用不可
-        # ----------------------------------------------------------------------
-
         if interaction.guild is None:
 
             if not interaction.response.is_done():
@@ -49,10 +45,6 @@ class AdminCommands(app_commands.Group):
                 )
 
             return False
-
-        # ----------------------------------------------------------------------
-        # 管理者以外は使用不可
-        # ----------------------------------------------------------------------
 
         if not interaction.user.guild_permissions.administrator:
 
@@ -68,7 +60,7 @@ class AdminCommands(app_commands.Group):
         return True
 
     # ==========================================================================
-    # Admin Status - v30
+    # Admin Status - V31
     # ==========================================================================
 
     @app_commands.command(
@@ -88,145 +80,115 @@ class AdminCommands(app_commands.Group):
             # Channel Config
             # ==================================================================
 
-            welcome_id = (
-                await self.bot.db.get_config(
-                    guild_id,
-                    "welcome_ch"
-                )
+            welcome_id = await self.bot.db.get_config(
+                guild_id,
+                "welcome_ch"
             )
 
-            log_id = (
-                await self.bot.db.get_config(
-                    guild_id,
-                    "log_ch"
-                )
+            log_id = await self.bot.db.get_config(
+                guild_id,
+                "log_ch"
             )
 
-            starboard_id = (
-                await self.bot.db.get_config(
-                    guild_id,
-                    "starboard_ch"
-                )
+            starboard_id = await self.bot.db.get_config(
+                guild_id,
+                "starboard_ch"
             )
 
-            auto_chat_id = (
-                await self.bot.db.get_config(
-                    guild_id,
-                    "auto_chat_ch"
-                )
+            auto_chat_id = await self.bot.db.get_config(
+                guild_id,
+                "auto_chat_ch"
             )
 
             # ==================================================================
-            # NGワード数
+            # Counts
             # ==================================================================
 
-            ng_row = (
-                await self.bot.db._fetchone(
-                    """
-                    SELECT COUNT(*)
-                    FROM ng_words
-                    WHERE guild_id=?
-                    """,
-                    (
-                        guild_id,
-                    )
+            ng_row = await self.bot.db._fetchone(
+                """
+                SELECT COUNT(*)
+                FROM ng_words
+                WHERE guild_id=?
+                """,
+                (
+                    guild_id,
                 )
+            )
+
+            response_row = await self.bot.db._fetchone(
+                """
+                SELECT COUNT(*)
+                FROM auto_replies
+                WHERE guild_id=?
+                """,
+                (
+                    guild_id,
+                )
+            )
+
+            reward_row = await self.bot.db._fetchone(
+                """
+                SELECT COUNT(*)
+                FROM level_rewards
+                WHERE guild_id=?
+                """,
+                (
+                    guild_id,
+                )
+            )
+
+            monthly_row = await self.bot.db._fetchone(
+                """
+                SELECT
+                    rule_ch,
+                    target_ch
+                FROM monthly_rules
+                WHERE guild_id=?
+                """,
+                (
+                    guild_id,
+                )
+            )
+
+            open_tickets = await self.bot.db.count_open_tickets(
+                guild_id
             )
 
             ng_count = (
-                ng_row[0]
+                int(ng_row[0])
                 if ng_row
                 else 0
             )
 
-            # ==================================================================
-            # 自動応答数
-            # ==================================================================
-
-            response_row = (
-                await self.bot.db._fetchone(
-                    """
-                    SELECT COUNT(*)
-                    FROM auto_replies
-                    WHERE guild_id=?
-                    """,
-                    (
-                        guild_id,
-                    )
-                )
-            )
-
             response_count = (
-                response_row[0]
+                int(response_row[0])
                 if response_row
                 else 0
             )
 
-            # ==================================================================
-            # Level Reward数
-            # ==================================================================
-
-            reward_row = (
-                await self.bot.db._fetchone(
-                    """
-                    SELECT COUNT(*)
-                    FROM level_rewards
-                    WHERE guild_id=?
-                    """,
-                    (
-                        guild_id,
-                    )
-                )
-            )
-
             reward_count = (
-                reward_row[0]
+                int(reward_row[0])
                 if reward_row
                 else 0
             )
 
             # ==================================================================
-            # Monthly
+            # Channel Helper
             # ==================================================================
 
-            monthly_row = (
-                await self.bot.db._fetchone(
-                    """
-                    SELECT
-                        rule_ch,
-                        target_ch
-                    FROM monthly_rules
-                    WHERE guild_id=?
-                    """,
-                    (
-                        guild_id,
-                    )
-                )
-            )
-
-            # ==================================================================
-            # Channel表示Helper
-            # ==================================================================
-
-            def channel_text(
-                channel_id
-            ):
+            def channel_text(channel_id):
 
                 if not channel_id:
 
                     return "❌ 未設定"
 
-                channel = (
-                    interaction.guild.get_channel(
-                        channel_id
-                    )
+                channel = interaction.guild.get_channel(
+                    channel_id
                 )
 
                 if channel:
 
-                    return (
-                        f"✅ {channel.mention}"
-                    )
+                    return f"✅ {channel.mention}"
 
                 return (
                     "⚠️ 不明なチャンネル "
@@ -234,25 +196,18 @@ class AdminCommands(app_commands.Group):
                 )
 
             # ==================================================================
-            # Monthly表示
+            # Monthly
             # ==================================================================
 
             if monthly_row:
 
-                rule_channel_id = (
-                    monthly_row[0]
-                )
-
-                target_channel_id = (
-                    monthly_row[1]
-                )
+                rule_channel_id = monthly_row[0]
+                target_channel_id = monthly_row[1]
 
                 monthly_text = (
                     "✅ 設定済み\n"
-                    f"ルール: "
-                    f"{channel_text(rule_channel_id)}\n"
-                    f"通知先: "
-                    f"{channel_text(target_channel_id)}"
+                    f"ルール: {channel_text(rule_channel_id)}\n"
+                    f"通知先: {channel_text(target_channel_id)}"
                 )
 
             else:
@@ -306,25 +261,25 @@ class AdminCommands(app_commands.Group):
 
             embed.add_field(
                 name="🚫 NGワード",
-                value=(
-                    f"**{ng_count}件**"
-                ),
+                value=f"**{ng_count}件**",
                 inline=True
             )
 
             embed.add_field(
                 name="💬 自動応答",
-                value=(
-                    f"**{response_count}件**"
-                ),
+                value=f"**{response_count}件**",
                 inline=True
             )
 
             embed.add_field(
                 name="🎁 レベル報酬",
-                value=(
-                    f"**{reward_count}件**"
-                ),
+                value=f"**{reward_count}件**",
+                inline=True
+            )
+
+            embed.add_field(
+                name="📩 Open Ticket",
+                value=f"**{open_tickets}件**",
                 inline=True
             )
 
@@ -338,18 +293,16 @@ class AdminCommands(app_commands.Group):
                 name="🧠 AI",
                 value=(
                     f"通常: `{Config.CHAT_MODEL}`\n"
-                    f"高推論: "
-                    f"`{Config.REASONING_MODEL}`\n"
+                    f"高推論: `{Config.REASONING_MODEL}`\n"
                     f"高速: `{Config.FAST_MODEL}`"
                 ),
                 inline=False
             )
 
             embed.add_field(
-                name="✨ XPシステム",
+                name="✨ XP",
                 value=(
-                    f"1回: "
-                    f"**{Config.XP_PER_MESSAGE} XP**\n"
+                    f"1回: **{Config.XP_PER_MESSAGE} XP**\n"
                     f"クールダウン: "
                     f"**{Config.XP_COOLDOWN_SECONDS}秒**"
                 ),
@@ -357,15 +310,33 @@ class AdminCommands(app_commands.Group):
             )
 
             embed.add_field(
-                name="💾 Database",
+                name="🛡️ Spam Protection",
                 value=(
-                    f"`{Config.DB_NAME}`"
+                    f"{Config.SPAM_WINDOW_SECONDS}秒以内に "
+                    f"{Config.SPAM_MESSAGE_THRESHOLD}投稿\n"
+                    f"同文: "
+                    f"{Config.DUPLICATE_MESSAGE_THRESHOLD}連投\n"
+                    f"大量メンション: "
+                    f"{Config.MASS_MENTION_THRESHOLD}人以上\n"
+                    "Strike 1: 警告\n"
+                    f"Strike 2: "
+                    f"{Config.SPAM_TIMEOUT_1_SECONDS}秒 Timeout\n"
+                    f"Strike 3: "
+                    f"{Config.SPAM_TIMEOUT_2_SECONDS}秒 Timeout\n"
+                    f"Strike 4+: "
+                    f"{Config.SPAM_TIMEOUT_3_SECONDS}秒 Timeout"
                 ),
                 inline=False
             )
 
+            embed.add_field(
+                name="💾 Database",
+                value=f"`{Config.DB_NAME}`",
+                inline=False
+            )
+
             embed.set_footer(
-                text="Akane Bot v30"
+                text="Akane Bot v31"
             )
 
             await interaction.response.send_message(
@@ -411,8 +382,7 @@ class AdminCommands(app_commands.Group):
 
             await interaction.response.send_message(
                 f"✅ ログ出力先を "
-                f"{channel.mention} "
-                "に設定したで。",
+                f"{channel.mention} に設定したで。",
                 ephemeral=True
             )
 
@@ -423,8 +393,7 @@ class AdminCommands(app_commands.Group):
             )
 
             await interaction.response.send_message(
-                "ログ設定中に"
-                "エラーが起きたで。",
+                "ログ設定中にエラーが起きたで。",
                 ephemeral=True
             )
 
@@ -452,8 +421,7 @@ class AdminCommands(app_commands.Group):
 
             await interaction.response.send_message(
                 f"✅ 挨拶場所を "
-                f"{channel.mention} "
-                "に設定したで。",
+                f"{channel.mention} に設定したで。",
                 ephemeral=True
             )
 
@@ -464,8 +432,7 @@ class AdminCommands(app_commands.Group):
             )
 
             await interaction.response.send_message(
-                "挨拶設定中に"
-                "エラーが起きたで。",
+                "挨拶設定中にエラーが起きたで。",
                 ephemeral=True
             )
 
@@ -493,8 +460,7 @@ class AdminCommands(app_commands.Group):
 
             await interaction.response.send_message(
                 f"✅ 殿堂入り先を "
-                f"{channel.mention} "
-                "に設定したで。",
+                f"{channel.mention} に設定したで。",
                 ephemeral=True
             )
 
@@ -534,8 +500,7 @@ class AdminCommands(app_commands.Group):
 
             await interaction.response.send_message(
                 f"✅ AI常駐場所を "
-                f"{channel.mention} "
-                "に設定したで。",
+                f"{channel.mention} に設定したで。",
                 ephemeral=True
             )
 
@@ -606,12 +571,12 @@ class AdminCommands(app_commands.Group):
             )
 
     # ==========================================================================
-    # Setup Ticket
+    # Setup Ticket - V31
     # ==========================================================================
 
     @app_commands.command(
         name="setup_ticket",
-        description="チケット設置"
+        description="Ticketパネル設置"
     )
     async def setup_ticket(
         self,
@@ -620,23 +585,63 @@ class AdminCommands(app_commands.Group):
 
         try:
 
+            embed = discord.Embed(
+                title="📩 サポート・問い合わせ",
+                description=(
+                    "問い合わせがある人は、"
+                    "下のメニューから種類を選んでな。\n\n"
+                    "専用の非公開チャンネルを作るで！"
+                ),
+                color=discord.Color.blue()
+            )
+
+            embed.add_field(
+                name="🛡️ 管理者への相談",
+                value="管理者に直接相談したいとき",
+                inline=False
+            )
+
+            embed.add_field(
+                name="🤖 Botの不具合",
+                value="茜Botのエラーや不具合",
+                inline=False
+            )
+
+            embed.add_field(
+                name="💬 サーバーについて",
+                value="ルールや運営について",
+                inline=False
+            )
+
+            embed.add_field(
+                name="📦 その他",
+                value="それ以外の問い合わせ",
+                inline=False
+            )
+
+            embed.set_footer(
+                text=(
+                    "1人につき同時に"
+                    "1つのTicketまで"
+                )
+            )
+
             await interaction.channel.send(
-                "📩 **サポート窓口**\n"
-                "問い合わせがある人は"
-                "下のボタンを押してな。",
-                view=TicketView()
+                embed=embed,
+                view=TicketView(
+                    self.bot
+                )
             )
 
             await interaction.response.send_message(
-                "✅ チケットパネルを"
-                "設置したで。",
+                "✅ Ticketパネルを設置したで。",
                 ephemeral=True
             )
 
         except discord.Forbidden:
 
             await interaction.response.send_message(
-                "チケットパネルを設置する"
+                "Ticketパネルを設置する"
                 "権限が茜にないみたいや。",
                 ephemeral=True
             )
@@ -650,7 +655,7 @@ class AdminCommands(app_commands.Group):
             if not interaction.response.is_done():
 
                 await interaction.response.send_message(
-                    "チケット設置中に"
+                    "Ticket設置中に"
                     "エラーが起きたで。",
                     ephemeral=True
                 )
@@ -678,11 +683,8 @@ class AdminCommands(app_commands.Group):
 
         try:
 
-            message = (
-                await interaction.channel
-                .fetch_message(
-                    int(message_id)
-                )
+            message = await interaction.channel.fetch_message(
+                int(message_id)
             )
 
             await message.add_reaction(
@@ -707,8 +709,7 @@ class AdminCommands(app_commands.Group):
             )
 
             await interaction.response.send_message(
-                "✅ リアクションロールを"
-                "設定したで。\n"
+                "✅ リアクションロールを設定したで。\n"
                 f"絵文字: {emoji}\n"
                 f"ロール: {role.mention}",
                 ephemeral=True
@@ -717,24 +718,21 @@ class AdminCommands(app_commands.Group):
         except ValueError:
 
             await interaction.response.send_message(
-                "メッセージIDは"
-                "数字で指定してな！",
+                "メッセージIDは数字で指定してな！",
                 ephemeral=True
             )
 
         except discord.NotFound:
 
             await interaction.response.send_message(
-                "そのメッセージが"
-                "見つからへんかったで。",
+                "そのメッセージが見つからへんかったで。",
                 ephemeral=True
             )
 
         except discord.Forbidden:
 
             await interaction.response.send_message(
-                "茜に必要な権限が"
-                "ないみたいや。",
+                "茜に必要な権限がないみたいや。",
                 ephemeral=True
             )
 
@@ -747,8 +745,8 @@ class AdminCommands(app_commands.Group):
             if not interaction.response.is_done():
 
                 await interaction.response.send_message(
-                    "リアクションロール"
-                    "設定中にエラーが起きたで。",
+                    "リアクションロール設定中に"
+                    "エラーが起きたで。",
                     ephemeral=True
                 )
 
@@ -759,10 +757,6 @@ class AdminCommands(app_commands.Group):
     @app_commands.command(
         name="level_reward",
         description="レベル報酬設定"
-    )
-    @app_commands.describe(
-        level="到達レベル",
-        role="付与するロール"
     )
     async def level_reward(
         self,
@@ -802,8 +796,7 @@ class AdminCommands(app_commands.Group):
 
             await interaction.response.send_message(
                 f"✅ **Lv.{level}** で "
-                f"{role.mention} "
-                "を付与する設定にしたで！",
+                f"{role.mention} を付与する設定にしたで！",
                 ephemeral=True
             )
 
@@ -880,19 +873,17 @@ class AdminCommands(app_commands.Group):
 
         try:
 
-            rows = (
-                await self.bot.db._fetchall(
-                    """
-                    SELECT
-                        level,
-                        role_id
-                    FROM level_rewards
-                    WHERE guild_id=?
-                    ORDER BY level ASC
-                    """,
-                    (
-                        interaction.guild.id,
-                    )
+            rows = await self.bot.db._fetchall(
+                """
+                SELECT
+                    level,
+                    role_id
+                FROM level_rewards
+                WHERE guild_id=?
+                ORDER BY level ASC
+                """,
+                (
+                    interaction.guild.id,
                 )
             )
 
@@ -913,11 +904,8 @@ class AdminCommands(app_commands.Group):
                 role_id
             ) in rows:
 
-                role = (
-                    interaction.guild
-                    .get_role(
-                        role_id
-                    )
+                role = interaction.guild.get_role(
+                    role_id
                 )
 
                 role_text = (
@@ -986,19 +974,17 @@ class AdminCommands(app_commands.Group):
 
         try:
 
-            exists = (
-                await self.bot.db._fetchone(
-                    """
-                    SELECT 1
-                    FROM ng_words
-                    WHERE guild_id=?
-                    AND word=?
-                    LIMIT 1
-                    """,
-                    (
-                        interaction.guild.id,
-                        word
-                    )
+            exists = await self.bot.db._fetchone(
+                """
+                SELECT 1
+                FROM ng_words
+                WHERE guild_id=?
+                AND word=?
+                LIMIT 1
+                """,
+                (
+                    interaction.guild.id,
+                    word
                 )
             )
 
@@ -1028,8 +1014,7 @@ class AdminCommands(app_commands.Group):
             )
 
             await interaction.response.send_message(
-                f"✅ NGワード追加: "
-                f"`{word}`",
+                f"✅ NGワード追加: `{word}`",
                 ephemeral=True
             )
 
@@ -1119,16 +1104,12 @@ class AdminCommands(app_commands.Group):
         name="kick",
         description="メンバーをKick"
     )
-    @app_commands.describe(
-        member="Kickするメンバー"
-    )
     async def kick(
         self,
         interaction: discord.Interaction,
         member: discord.Member
     ):
 
-        # 自分自身
         if member.id == interaction.user.id:
 
             await interaction.response.send_message(
@@ -1139,7 +1120,6 @@ class AdminCommands(app_commands.Group):
 
             return
 
-        # Bot自身
         if (
             self.bot.user
             and member.id == self.bot.user.id
@@ -1163,8 +1143,7 @@ class AdminCommands(app_commands.Group):
             )
 
             await interaction.response.send_message(
-                f"✅ **{member}** を"
-                "Kickしたで。",
+                f"✅ **{member}** をKickしたで。",
                 ephemeral=True
             )
 
@@ -1205,9 +1184,6 @@ class AdminCommands(app_commands.Group):
         name="ban",
         description="メンバーをBan"
     )
-    @app_commands.describe(
-        member="Banするメンバー"
-    )
     async def ban(
         self,
         interaction: discord.Interaction,
@@ -1247,8 +1223,7 @@ class AdminCommands(app_commands.Group):
             )
 
             await interaction.response.send_message(
-                f"✅ **{member}** を"
-                "Banしたで。",
+                f"✅ **{member}** をBanしたで。",
                 ephemeral=True
             )
 
@@ -1289,18 +1264,11 @@ class AdminCommands(app_commands.Group):
         name="purge",
         description="メッセージ削除"
     )
-    @app_commands.describe(
-        amount="最大削除数",
-        user="対象ユーザー",
-        hours="過去何時間以内を対象にするか"
-    )
     async def purge(
         self,
         interaction: discord.Interaction,
         amount: int,
-        user: Optional[
-            discord.Member
-        ] = None,
+        user: Optional[discord.Member] = None,
         hours: Optional[int] = None
     ):
 
@@ -1344,9 +1312,7 @@ class AdminCommands(app_commands.Group):
             else None
         )
 
-        def check(
-            message
-        ):
+        def check(message):
 
             if (
                 user
@@ -1366,11 +1332,9 @@ class AdminCommands(app_commands.Group):
 
         try:
 
-            deleted = (
-                await interaction.channel.purge(
-                    limit=amount,
-                    check=check
-                )
+            deleted = await interaction.channel.purge(
+                limit=amount,
+                check=check
             )
 
             await interaction.followup.send(
@@ -1409,7 +1373,7 @@ class AdminCommands(app_commands.Group):
 
 
 # ==============================================================================
-# Cog Setup
+# Extension Setup
 # ==============================================================================
 
 async def setup(bot):
