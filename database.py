@@ -1,4 +1,5 @@
 import aiosqlite
+
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -121,6 +122,37 @@ class DatabaseManager:
                 """
             )
 
+            # ==================================================================
+            # ★ v29 AI会話履歴
+            # ==================================================================
+
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS conversation_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id INTEGER NOT NULL,
+                    channel_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    role TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+
+            await db.execute(
+                """
+                CREATE INDEX IF NOT EXISTS
+                idx_conversation_lookup
+                ON conversation_history (
+                    guild_id,
+                    channel_id,
+                    user_id,
+                    id
+                )
+                """
+            )
+
             await db.commit()
 
     # ==========================================================================
@@ -131,21 +163,33 @@ class DatabaseManager:
 
         async with aiosqlite.connect(self.path) as db:
 
-            await db.execute(query, params)
+            await db.execute(
+                query,
+                params
+            )
+
             await db.commit()
 
     async def _fetchone(self, query, params=()):
 
         async with aiosqlite.connect(self.path) as db:
 
-            cursor = await db.execute(query, params)
+            cursor = await db.execute(
+                query,
+                params
+            )
+
             return await cursor.fetchone()
 
     async def _fetchall(self, query, params=()):
 
         async with aiosqlite.connect(self.path) as db:
 
-            cursor = await db.execute(query, params)
+            cursor = await db.execute(
+                query,
+                params
+            )
+
             return await cursor.fetchall()
 
     # ==========================================================================
@@ -188,7 +232,10 @@ class DatabaseManager:
                 SET {col}=?
                 WHERE guild_id=?
                 """,
-                (val, guild_id)
+                (
+                    val,
+                    guild_id
+                )
             )
 
         else:
@@ -199,7 +246,10 @@ class DatabaseManager:
                 (guild_id, {col})
                 VALUES (?, ?)
                 """,
-                (guild_id, val)
+                (
+                    guild_id,
+                    val
+                )
             )
 
     async def get_config(
@@ -226,7 +276,9 @@ class DatabaseManager:
             FROM guild_settings
             WHERE guild_id=?
             """,
-            (guild_id,)
+            (
+                guild_id,
+            )
         )
 
         return result[0] if result else None
@@ -247,7 +299,9 @@ class DatabaseManager:
             FROM users
             WHERE user_id=?
             """,
-            (user_id,)
+            (
+                user_id,
+            )
         )
 
         if row:
@@ -258,7 +312,7 @@ class DatabaseManager:
 
             leveled_up = False
 
-            # v28ではv27仕様をそのまま維持
+            # v29ではまだ既存仕様を維持
             if xp >= level * 100:
 
                 xp = 0
@@ -306,7 +360,9 @@ class DatabaseManager:
             FROM users
             WHERE user_id=?
             """,
-            (user_id,)
+            (
+                user_id,
+            )
         )
 
         return result if result else (1, 0)
@@ -323,7 +379,9 @@ class DatabaseManager:
             ORDER BY level DESC, xp DESC
             LIMIT ?
             """,
-            (limit,)
+            (
+                limit,
+            )
         )
 
     # ==========================================================================
@@ -337,7 +395,9 @@ class DatabaseManager:
 
         today = datetime.now(
             JST
-        ).strftime("%Y-%m-%d")
+        ).strftime(
+            "%Y-%m-%d"
+        )
 
         row = await self._fetchone(
             """
@@ -352,7 +412,11 @@ class DatabaseManager:
             )
         )
 
-        count = row[0] if row else 0
+        count = (
+            row[0]
+            if row
+            else 0
+        )
 
         if count >= Config.DAILY_LIMIT:
             return False
@@ -401,6 +465,7 @@ class DatabaseManager:
     ):
 
         if minutes <= 0:
+
             raise ValueError(
                 "minutes must be greater than 0"
             )
@@ -428,3 +493,231 @@ class DatabaseManager:
                 end_time
             )
         )
+
+    # ==========================================================================
+    # ★ v29 Conversation Memory
+    # ==========================================================================
+
+    async def add_conversation_message(
+        self,
+        guild_id: int,
+        channel_id: int,
+        user_id: int,
+        role: str,
+        content: str
+    ):
+
+        if role not in {
+            "user",
+            "assistant"
+        }:
+            raise ValueError(
+                "Invalid conversation role."
+            )
+
+        if not content:
+            return
+
+        # 異常に長い履歴をDBへ保存しない
+        content = content[:4000]
+
+        created_at = datetime.now(
+            JST
+        ).isoformat()
+
+        await self._execute(
+            """
+            INSERT INTO conversation_history
+            (
+                guild_id,
+                channel_id,
+                user_id,
+                role,
+                content,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                guild_id,
+                channel_id,
+                user_id,
+                role,
+                content,
+                created_at
+            )
+        )
+
+    async def get_conversation_history(
+        self,
+        guild_id: int,
+        channel_id: int,
+        user_id: int,
+        limit: int = Config.MEMORY_MESSAGE_LIMIT
+    ):
+
+        rows = await self._fetchall(
+            """
+            SELECT role, content
+            FROM conversation_history
+            WHERE guild_id=?
+            AND channel_id=?
+            AND user_id=?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (
+                guild_id,
+                channel_id,
+                user_id,
+                limit
+            )
+        )
+
+        # DESCで取ったので古い→新しいに戻す
+        rows.reverse()
+
+        return [
+            {
+                "role": role,
+                "content": content
+            }
+            for role, content in rows
+        ]
+
+    async def count_conversation_history(
+        self,
+        guild_id: int,
+        channel_id: int,
+        user_id: int
+    ) -> int:
+
+        row = await self._fetchone(
+            """
+            SELECT COUNT(*)
+            FROM conversation_history
+            WHERE guild_id=?
+            AND channel_id=?
+            AND user_id=?
+            """,
+            (
+                guild_id,
+                channel_id,
+                user_id
+            )
+        )
+
+        return (
+            row[0]
+            if row
+            else 0
+        )
+
+    async def clear_conversation_history(
+        self,
+        guild_id: int,
+        channel_id: int,
+        user_id: int
+    ) -> int:
+
+        count = await self.count_conversation_history(
+            guild_id,
+            channel_id,
+            user_id
+        )
+
+        await self._execute(
+            """
+            DELETE FROM conversation_history
+            WHERE guild_id=?
+            AND channel_id=?
+            AND user_id=?
+            """,
+            (
+                guild_id,
+                channel_id,
+                user_id
+            )
+        )
+
+        return count
+
+    async def clear_all_user_history(
+        self,
+        guild_id: int,
+        user_id: int
+    ) -> int:
+
+        row = await self._fetchone(
+            """
+            SELECT COUNT(*)
+            FROM conversation_history
+            WHERE guild_id=?
+            AND user_id=?
+            """,
+            (
+                guild_id,
+                user_id
+            )
+        )
+
+        count = (
+            row[0]
+            if row
+            else 0
+        )
+
+        await self._execute(
+            """
+            DELETE FROM conversation_history
+            WHERE guild_id=?
+            AND user_id=?
+            """,
+            (
+                guild_id,
+                user_id
+            )
+        )
+
+        return count
+
+    async def cleanup_old_conversations(
+        self,
+        days: int = Config.MEMORY_RETENTION_DAYS
+    ) -> int:
+
+        cutoff = (
+            datetime.now(JST)
+            - timedelta(days=days)
+        ).isoformat()
+
+        row = await self._fetchone(
+            """
+            SELECT COUNT(*)
+            FROM conversation_history
+            WHERE created_at < ?
+            """,
+            (
+                cutoff,
+            )
+        )
+
+        count = (
+            row[0]
+            if row
+            else 0
+        )
+
+        if count:
+
+            await self._execute(
+                """
+                DELETE FROM conversation_history
+                WHERE created_at < ?
+                """,
+                (
+                    cutoff,
+                )
+            )
+
+        return count
