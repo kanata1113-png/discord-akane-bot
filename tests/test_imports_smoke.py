@@ -12,6 +12,7 @@ MODULES = [
     "cogs.admin",
     "cogs.general",
     "cogs.events",
+    "app",
     "bot",
 ]
 
