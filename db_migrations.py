@@ -19,14 +19,122 @@ class Migration:
 
 MIGRATION_TABLE = "schema_migrations"
 
+REQUIRED_BASELINE_COLUMNS = {
+    "usage_log": {"user_id", "date", "count"},
+    "starboard_log": {"message_id"},
+    "guild_settings": {
+        "guild_id",
+        "welcome_ch",
+        "log_ch",
+        "starboard_ch",
+        "auto_chat_ch",
+    },
+    "users": {"user_id", "xp", "level"},
+    "level_rewards": {"guild_id", "level", "role_id"},
+    "reaction_roles": {"message_id", "emoji", "role_id"},
+    "ng_words": {"guild_id", "word"},
+    "auto_replies": {"guild_id", "trigger", "response"},
+    "reminders": {"id", "user_id", "channel_id", "message", "end_time"},
+    "monthly_rules": {"guild_id", "rule_ch", "target_ch"},
+    "conversation_history": {
+        "id",
+        "guild_id",
+        "channel_id",
+        "user_id",
+        "role",
+        "content",
+        "created_at",
+    },
+    "tickets": {
+        "id",
+        "guild_id",
+        "channel_id",
+        "user_id",
+        "category",
+        "status",
+        "created_at",
+        "closed_at",
+    },
+    "user_stats": {
+        "guild_id",
+        "user_id",
+        "message_count",
+        "ai_chat_count",
+        "fortune_count",
+        "ticket_count",
+        "first_seen",
+        "last_seen",
+    },
+    "user_achievements": {
+        "guild_id",
+        "user_id",
+        "achievement_key",
+        "unlocked_at",
+    },
+    "user_titles": {
+        "guild_id",
+        "user_id",
+        "title_key",
+        "equipped",
+        "unlocked_at",
+    },
+    "daily_fortunes": {
+        "guild_id",
+        "user_id",
+        "fortune_date",
+        "fortune_key",
+        "score",
+        "created_at",
+    },
+    "weekly_xp": {"guild_id", "user_id", "week_key", "xp", "updated_at"},
+}
+
+REQUIRED_BASELINE_INDEXES = {
+    "idx_conversation_lookup",
+    "idx_ticket_user",
+    "idx_weekly_xp_ranking",
+}
+
+
+async def _validate_baseline_schema(db: aiosqlite.Connection) -> None:
+    for table_name, required_columns in REQUIRED_BASELINE_COLUMNS.items():
+        cursor = await db.execute(f'PRAGMA table_info("{table_name}")')
+        rows = await cursor.fetchall()
+        if not rows:
+            raise RuntimeError(
+                f"Baseline schema validation failed: missing table {table_name}"
+            )
+
+        actual_columns = {str(row[1]) for row in rows}
+        missing_columns = required_columns - actual_columns
+        if missing_columns:
+            raise RuntimeError(
+                "Baseline schema validation failed: "
+                f"table {table_name} is missing columns "
+                f"{sorted(missing_columns)}"
+            )
+
+    cursor = await db.execute(
+        "SELECT name FROM sqlite_master WHERE type='index'"
+    )
+    actual_indexes = {str(row[0]) for row in await cursor.fetchall()}
+    missing_indexes = REQUIRED_BASELINE_INDEXES - actual_indexes
+    if missing_indexes:
+        raise RuntimeError(
+            "Baseline schema validation failed: missing indexes "
+            f"{sorted(missing_indexes)}"
+        )
+
 
 async def _baseline_v34_schema(db: aiosqlite.Connection) -> None:
     """Adopt the already-deployed v34 schema without rewriting user data.
 
     DatabaseManager.init() remains responsible for creating the current baseline
-    tables in Phase 3. This migration only records that the baseline has been
-    reached. Future schema changes are added as new numbered migrations.
+    tables in Phase 3. The baseline is recorded only after the existing schema
+    has been validated. Future schema changes are added as numbered migrations.
     """
+
+    await _validate_baseline_schema(db)
 
 
 MIGRATIONS = (
