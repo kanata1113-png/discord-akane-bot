@@ -1,13 +1,36 @@
-import asyncio
-import io
 import logging
 
-from datetime import datetime
-
 import discord
+import openai
 
-from config import Config, JST
+from discord.ext import commands
 
+from config import Config
+from database import DatabaseManager
+from ai_manager import AiManager
+
+from views.event_view import EventView
+from views.ticket_view import (
+    TicketView,
+    TicketCloseView,
+)
+
+
+# ==============================================================================
+# Logging
+# ==============================================================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format=(
+        "%(asctime)s | "
+        "%(levelname)s | "
+        "%(message)s"
+    ),
+    handlers=[
+        logging.StreamHandler()
+    ],
+)
 
 logger = logging.getLogger(
     "AkaneBot"
@@ -15,1243 +38,511 @@ logger = logging.getLogger(
 
 
 # ==============================================================================
-# Helper
+# Bot
 # ==============================================================================
 
-def safe_channel_name(
-    text: str
-) -> str:
+class AkaneBot(commands.Bot):
 
-    result = ""
+    def __init__(self):
 
-    for char in text.lower():
-
-        if (
-            char.isalnum()
-            or char in {
-                "-",
-                "_",
-            }
-        ):
-
-            result += char
-
-    result = result.strip(
-        "-_"
-    )
-
-    if not result:
-
-        result = "user"
-
-    return result[:30]
-
-
-# ==============================================================================
-# Transcript
-# ==============================================================================
-
-async def create_transcript(
-    channel: discord.TextChannel
-) -> bytes:
-
-    lines = []
-
-    lines.append(
-        "========================================"
-    )
-
-    lines.append(
-        "Akane Bot Ticket Transcript"
-    )
-
-    lines.append(
-        f"Guild: {channel.guild.name}"
-    )
-
-    lines.append(
-        f"Channel: #{channel.name}"
-    )
-
-    lines.append(
-        f"Channel ID: {channel.id}"
-    )
-
-    lines.append(
-        "Generated: "
-        f"{datetime.now(JST).isoformat()}"
-    )
-
-    lines.append(
-        "========================================"
-    )
-
-    lines.append(
-        ""
-    )
-
-    try:
-
-        async for message in channel.history(
-            limit=(
-                Config
-                .TICKET_TRANSCRIPT_LIMIT
-            ),
-            oldest_first=True
-        ):
-
-            created = (
-                message.created_at
-                .astimezone(
-                    JST
-                )
-                .strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
-            )
-
-            author = (
-                f"{message.author} "
-                f"({message.author.id})"
-            )
-
-            content = (
-                message.content
-                or ""
-            )
-
-            lines.append(
-                f"[{created}] "
-                f"{author}"
-            )
-
-            if content:
-
-                lines.append(
-                    content
-                )
-
-            for attachment in (
-                message.attachments
-            ):
-
-                lines.append(
-                    "[Attachment] "
-                    f"{attachment.url}"
-                )
-
-            if message.embeds:
-
-                lines.append(
-                    "[Embeds] "
-                    f"{len(message.embeds)}"
-                )
-
-            lines.append(
-                ""
-            )
-
-    except Exception as e:
-
-        logger.exception(
-            "Transcript generation "
-            f"failed: {e}"
-        )
-
-        lines.append(
-            ""
-        )
-
-        lines.append(
-            "[ERROR] "
-            "Transcriptの一部取得に"
-            "失敗しました。"
-        )
-
-    transcript = "\n".join(
-        lines
-    )
-
-    return transcript.encode(
-        "utf-8"
-    )
-
-
-# ==============================================================================
-# V32 Ticket Unlock Notification
-# ==============================================================================
-
-async def send_ticket_unlock_notifications(
-    channel,
-    member,
-    unlocks: dict
-):
-
-    if not Config.ACHIEVEMENT_NOTIFICATIONS:
-
-        return
-
-    achievement_keys = unlocks.get(
-        "achievements",
-        []
-    )
-
-    title_keys = unlocks.get(
-        "titles",
-        []
-    )
-
-    if (
-        not achievement_keys
-        and not title_keys
-    ):
-
-        return
-
-    lines = []
-
-    for key in achievement_keys:
-
-        data = (
-            Config.ACHIEVEMENTS.get(
-                key
-            )
-        )
-
-        if not data:
-
-            continue
-
-        lines.append(
-            f"🏆 実績解除: "
-            f"{data['emoji']} "
-            f"**{data['name']}**"
-        )
-
-    for key in title_keys:
-
-        data = (
-            Config.TITLES.get(
-                key
-            )
-        )
-
-        if not data:
-
-            continue
-
-        lines.append(
-            f"🎖️ 称号獲得: "
-            f"**{data['name']}**"
-        )
-
-    if not lines:
-
-        return
-
-    try:
-
-        embed = discord.Embed(
-            title="🎉 新しい解除項目",
-            description="\n".join(
-                lines
-            ),
-            color=discord.Color.gold()
-        )
-
-        embed.set_footer(
-            text="Akane Bot v32"
-        )
-
-        await channel.send(
-            content=member.mention,
-            embed=embed
-        )
-
-    except Exception as e:
-
-        logger.exception(
-            "Ticket unlock notification "
-            f"failed: {e}"
-        )
-
-
-# ==============================================================================
-# Ticket Category Select
-# ==============================================================================
-
-class TicketCategorySelect(
-    discord.ui.Select
-):
-
-    def __init__(
-        self,
-        bot
-    ):
-
-        self.bot = bot
-
-        options = [
-            discord.SelectOption(
-                label="管理者への相談",
-                description=(
-                    "管理者に相談したいことがある"
-                ),
-                emoji="🛡️",
-                value="admin"
-            ),
-
-            discord.SelectOption(
-                label="Botの不具合",
-                description=(
-                    "茜Botの不具合・エラーなど"
-                ),
-                emoji="🤖",
-                value="bot"
-            ),
-
-            discord.SelectOption(
-                label="サーバーについて",
-                description=(
-                    "サーバー運営やルールについて"
-                ),
-                emoji="💬",
-                value="server"
-            ),
-
-            discord.SelectOption(
-                label="その他",
-                description=(
-                    "上記に当てはまらない問い合わせ"
-                ),
-                emoji="📦",
-                value="other"
-            ),
-        ]
+        intents = discord.Intents.all()
 
         super().__init__(
-            placeholder=(
-                "問い合わせの種類を選んでな"
-            ),
-            min_values=1,
-            max_values=1,
-            options=options,
-            custom_id=(
-                "ticket_category_select"
-            )
+            command_prefix="!",
+            intents=intents,
+            help_command=None,
         )
-
-    async def callback(
-        self,
-        interaction: discord.Interaction
-    ):
-
-        if not interaction.guild:
-
-            await interaction.response.send_message(
-                "この機能は"
-                "サーバー内専用やで。",
-                ephemeral=True
-            )
-
-            return
-
-        selected = (
-            self.values[0]
-        )
-
-        category_map = {
-            "admin": (
-                "管理者への相談",
-                "🛡️"
-            ),
-
-            "bot": (
-                "Botの不具合",
-                "🤖"
-            ),
-
-            "server": (
-                "サーバーについて",
-                "💬"
-            ),
-
-            "other": (
-                "その他",
-                "📦"
-            ),
-        }
-
-        (
-            category_name,
-            emoji
-        ) = category_map[
-            selected
-        ]
 
         # ======================================================================
-        # Duplicate Ticket Check
+        # Managers
+        # ======================================================================
+
+        self.db = DatabaseManager(
+            Config.DB_NAME
+        )
+
+        self.ai = AiManager()
+
+    # ==========================================================================
+    # Setup Hook
+    # ==========================================================================
+
+    async def setup_hook(self):
+
+        logger.info(
+            "=============================================="
+        )
+
+        logger.info(
+            "Akane Bot v32 starting..."
+        )
+
+        logger.info(
+            f"Database path: "
+            f"{Config.DB_NAME}"
+        )
+
+        logger.info(
+            f"Chat model: "
+            f"{Config.CHAT_MODEL}"
+        )
+
+        logger.info(
+            f"Reasoning model: "
+            f"{Config.REASONING_MODEL}"
+        )
+
+        logger.info(
+            f"Fast model: "
+            f"{Config.FAST_MODEL}"
+        )
+
+        logger.info(
+            f"Memory limit: "
+            f"{Config.MEMORY_MESSAGE_LIMIT} messages"
+        )
+
+        logger.info(
+            f"Memory retention: "
+            f"{Config.MEMORY_RETENTION_DAYS} days"
+        )
+
+        logger.info(
+            f"XP per message: "
+            f"{Config.XP_PER_MESSAGE}"
+        )
+
+        logger.info(
+            f"XP cooldown: "
+            f"{Config.XP_COOLDOWN_SECONDS}s"
+        )
+
+        logger.info(
+            "Spam protection: ENABLED"
+        )
+
+        logger.info(
+            "Ticket system: V32 compatible"
+        )
+
+        logger.info(
+            f"Achievements: "
+            f"{len(Config.ACHIEVEMENTS)}"
+        )
+
+        logger.info(
+            f"Titles: "
+            f"{len(Config.TITLES)}"
+        )
+
+        logger.info(
+            "Fortune system: ENABLED"
+        )
+
+        logger.info(
+            "=============================================="
+        )
+
+        # ======================================================================
+        # Database
         # ======================================================================
 
         try:
 
-            existing = (
-                await self.bot.db
-                .get_open_ticket(
-                    interaction.guild.id,
-                    interaction.user.id
-                )
+            await self.db.init()
+
+            logger.info(
+                f"Database initialized: "
+                f"{Config.DB_NAME}"
             )
 
         except Exception as e:
 
             logger.exception(
-                "Ticket duplicate check "
+                "Database initialization "
                 f"failed: {e}"
             )
 
-            await interaction.response.send_message(
-                "Ticket情報の確認中に"
-                "エラーが起きたで。",
-                ephemeral=True
-            )
-
-            return
-
-        if existing:
-
-            existing_channel_id = (
-                existing[1]
-            )
-
-            existing_channel = (
-                interaction.guild
-                .get_channel(
-                    existing_channel_id
-                )
-            )
-
-            # ------------------------------------------------------------------
-            # DBではOpenだが
-            # Discord側で削除済み
-            # ------------------------------------------------------------------
-
-            if not existing_channel:
-
-                try:
-
-                    await self.bot.db.close_ticket(
-                        existing_channel_id
-                    )
-
-                except Exception as e:
-
-                    logger.exception(
-                        "Missing ticket cleanup "
-                        f"failed: {e}"
-                    )
-
-            else:
-
-                await interaction.response.send_message(
-                    "📩 すでに開いてる"
-                    "問い合わせがあるで！\n"
-                    f"{existing_channel.mention}",
-                    ephemeral=True
-                )
-
-                return
+            raise
 
         # ======================================================================
-        # Defer
+        # Memory Cleanup
         # ======================================================================
-
-        await interaction.response.defer(
-            ephemeral=True
-        )
-
-        channel = None
 
         try:
 
-            bot_member = (
-                interaction.guild.me
-            )
-
-            overwrites = {
-                interaction.guild.default_role:
-                    discord.PermissionOverwrite(
-                        view_channel=False
-                    ),
-
-                interaction.user:
-                    discord.PermissionOverwrite(
-                        view_channel=True,
-                        send_messages=True,
-                        read_message_history=True,
-                        attach_files=True
-                    ),
-
-                bot_member:
-                    discord.PermissionOverwrite(
-                        view_channel=True,
-                        send_messages=True,
-                        read_message_history=True,
-                        manage_channels=True
-                    ),
-            }
-
-            username = (
-                safe_channel_name(
-                    interaction.user.name
+            deleted = (
+                await self.db
+                .cleanup_old_conversations(
+                    Config.MEMORY_RETENTION_DAYS
                 )
             )
 
-            channel_name = (
-                f"ticket-"
-                f"{username}-"
-                f"{str(interaction.user.id)[-4:]}"
+            logger.info(
+                "Initial memory cleanup "
+                f"completed | deleted={deleted}"
             )
 
-            channel = (
-                await interaction.guild
-                .create_text_channel(
-                    channel_name,
-                    overwrites=overwrites,
-                    reason=(
-                        "Akane Bot Ticket"
-                    )
+        except Exception as e:
+
+            # Memory cleanup失敗だけでは
+            # Bot全体を停止させない
+            logger.exception(
+                "Initial memory cleanup "
+                f"failed: {e}"
+            )
+
+        # ======================================================================
+        # Persistent Views
+        # ======================================================================
+
+        try:
+
+            # ------------------------------------------------------------------
+            # Event
+            # ------------------------------------------------------------------
+
+            self.add_view(
+                EventView()
+            )
+
+            # ------------------------------------------------------------------
+            # Ticket
+            # ------------------------------------------------------------------
+
+            self.add_view(
+                TicketView(
+                    self
                 )
             )
 
-            # ==================================================================
-            # DB Ticket
-            # ==================================================================
-
-            await self.bot.db.create_ticket(
-                guild_id=(
-                    interaction.guild.id
-                ),
-                channel_id=(
-                    channel.id
-                ),
-                user_id=(
-                    interaction.user.id
-                ),
-                category=selected
-            )
-
-            # ==================================================================
-            # Welcome Embed
-            # ==================================================================
-
-            embed = discord.Embed(
-                title=(
-                    f"{emoji} "
-                    f"{category_name}"
-                ),
-                description=(
-                    f"{interaction.user.mention} "
-                    "問い合わせありがとうな！\n\n"
-                    "ここに詳しい内容を書いてな。"
-                    "管理者が確認できるように"
-                    "してあるで。\n\n"
-                    "解決したら下の"
-                    "「解決・閉じる」ボタンを"
-                    "押してな。"
-                ),
-                color=discord.Color.blue()
-            )
-
-            embed.add_field(
-                name="問い合わせ種別",
-                value=category_name,
-                inline=True
-            )
-
-            embed.add_field(
-                name="作成者",
-                value=(
-                    interaction.user.mention
-                ),
-                inline=True
-            )
-
-            embed.add_field(
-                name="Ticket ID",
-                value=(
-                    f"`{channel.id}`"
-                ),
-                inline=False
-            )
-
-            embed.set_footer(
-                text="Akane Bot v32 Ticket"
-            )
-
-            await channel.send(
-                content=(
-                    interaction.user.mention
-                ),
-                embed=embed,
-                view=TicketCloseView(
-                    self.bot
+            self.add_view(
+                TicketCloseView(
+                    self
                 )
             )
 
-            # ==================================================================
-            # V32 Ticket Statistics
-            # ==================================================================
+            logger.info(
+                "Persistent views loaded."
+            )
+
+        except Exception as e:
+
+            logger.exception(
+                "Persistent view loading "
+                f"failed: {e}"
+            )
+
+            raise
+
+        # ======================================================================
+        # Extensions / Cogs
+        # ======================================================================
+
+        extensions = [
+            "cogs.admin",
+            "cogs.general",
+            "cogs.events",
+        ]
+
+        for extension in extensions:
 
             try:
 
-                ticket_count = (
-                    await self.bot.db
-                    .increment_ticket_count(
-                        guild_id=(
-                            interaction.guild.id
-                        ),
-                        user_id=(
-                            interaction.user.id
-                        )
-                    )
+                await self.load_extension(
+                    extension
                 )
 
                 logger.info(
-                    "Ticket stat incremented | "
-                    f"guild="
-                    f"{interaction.guild.id} | "
-                    f"user="
-                    f"{interaction.user.id} | "
-                    f"count="
-                    f"{ticket_count}"
-                )
-
-                unlocks = (
-                    await self.bot.db
-                    .evaluate_progress_unlocks(
-                        guild_id=(
-                            interaction.guild.id
-                        ),
-                        user_id=(
-                            interaction.user.id
-                        )
-                    )
-                )
-
-                await (
-                    send_ticket_unlock_notifications(
-                        channel,
-                        interaction.user,
-                        unlocks
-                    )
+                    f"Extension loaded: "
+                    f"{extension}"
                 )
 
             except Exception as e:
 
-                # Stats障害で
-                # Ticket自体は消さない
                 logger.exception(
-                    "V32 ticket stats "
-                    f"failed: {e}"
+                    "Extension load failed "
+                    f"({extension}): {e}"
                 )
 
-            # ==================================================================
-            # User Response
-            # ==================================================================
+                raise
 
-            await interaction.followup.send(
-                "✅ 問い合わせ用の"
-                "チャンネルを作ったで！\n"
-                f"{channel.mention}",
-                ephemeral=True
-            )
+        # ======================================================================
+        # Slash Commands
+        # ======================================================================
+
+        try:
+
+            synced = await self.tree.sync()
 
             logger.info(
-                "Ticket created | "
-                f"guild={interaction.guild.id} | "
-                f"user={interaction.user.id} | "
-                f"channel={channel.id} | "
-                f"category={selected}"
-            )
-
-        except ValueError:
-
-            # DB重複防止
-
-            if channel:
-
-                try:
-
-                    await channel.delete(
-                        reason=(
-                            "Duplicate Ticket"
-                        )
-                    )
-
-                except Exception:
-
-                    pass
-
-            await interaction.followup.send(
-                "すでに開いてる"
-                "問い合わせがあるみたいや。",
-                ephemeral=True
-            )
-
-        except discord.Forbidden:
-
-            logger.warning(
-                "Ticket creation "
-                "permission denied."
-            )
-
-            if channel:
-
-                try:
-
-                    await channel.delete()
-
-                except Exception:
-
-                    pass
-
-            await interaction.followup.send(
-                "チャンネルを作る"
-                "権限が茜にないみたいや。",
-                ephemeral=True
+                "Slash commands synced: "
+                f"{len(synced)}"
             )
 
         except Exception as e:
 
             logger.exception(
-                "Ticket creation failed | "
-                f"error={e}"
+                f"Command sync failed: {e}"
             )
 
-            if channel:
+            raise
 
-                try:
-
-                    await channel.delete()
-
-                except Exception:
-
-                    pass
-
-            await interaction.followup.send(
-                "Ticket作成中に"
-                "エラーが起きたで。",
-                ephemeral=True
-            )
-
-
-# ==============================================================================
-# Main Ticket View
-# ==============================================================================
-
-class TicketView(
-    discord.ui.View
-):
-
-    def __init__(
-        self,
-        bot
-    ):
-
-        super().__init__(
-            timeout=None
+        logger.info(
+            "setup_hook completed."
         )
-
-        self.bot = bot
-
-        self.add_item(
-            TicketCategorySelect(
-                bot
-            )
-        )
-
-
-# ==============================================================================
-# Ticket Close View
-# ==============================================================================
-
-class TicketCloseView(
-    discord.ui.View
-):
-
-    def __init__(
-        self,
-        bot
-    ):
-
-        super().__init__(
-            timeout=None
-        )
-
-        self.bot = bot
-
-    @discord.ui.button(
-        label="解決・閉じる",
-        style=(
-            discord.ButtonStyle.danger
-        ),
-        emoji="🔒",
-        custom_id=(
-            "ticket_close_button"
-        )
-    )
-    async def close(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-
-        try:
-
-            ticket = (
-                await self.bot.db
-                .get_ticket_by_channel(
-                    interaction.channel.id
-                )
-            )
-
-        except Exception as e:
-
-            logger.exception(
-                "Ticket lookup failed | "
-                f"error={e}"
-            )
-
-            await interaction.response.send_message(
-                "Ticket情報を"
-                "確認できへんかったわ。",
-                ephemeral=True
-            )
-
-            return
-
-        if not ticket:
-
-            await interaction.response.send_message(
-                "このチャンネルは"
-                "Ticketとして"
-                "登録されてへんみたいや。",
-                ephemeral=True
-            )
-
-            return
-
-        ticket_user_id = (
-            ticket[2]
-        )
-
-        is_owner = (
-            interaction.user.id
-            == ticket_user_id
-        )
-
-        is_admin = (
-            interaction.user
-            .guild_permissions
-            .administrator
-        )
-
-        if not (
-            is_owner
-            or is_admin
-        ):
-
-            await interaction.response.send_message(
-                "このTicketを閉じられるんは"
-                "作成者か管理者だけやで。",
-                ephemeral=True
-            )
-
-            return
-
-        await interaction.response.send_message(
-            "⚠️ 本当にこの"
-            "Ticketを閉じる？",
-            view=TicketCloseConfirmView(
-                self.bot,
-                interaction.user.id
-            ),
-            ephemeral=True
-        )
-
-
-# ==============================================================================
-# Ticket Close Confirmation
-# ==============================================================================
-
-class TicketCloseConfirmView(
-    discord.ui.View
-):
-
-    def __init__(
-        self,
-        bot,
-        requested_by: int
-    ):
-
-        super().__init__(
-            timeout=(
-                Config
-                .TICKET_CLOSE_CONFIRM_TIMEOUT
-            )
-        )
-
-        self.bot = bot
-
-        self.requested_by = (
-            requested_by
-        )
-
-        self.processing = False
 
     # ==========================================================================
-    # Confirm
+    # Ready
     # ==========================================================================
 
-    @discord.ui.button(
-        label="閉じる",
-        style=(
-            discord.ButtonStyle.danger
-        ),
-        emoji="✅"
-    )
-    async def confirm(
+    async def on_ready(self):
+
+        logger.info(
+            "=============================================="
+        )
+
+        logger.info(
+            f"Logged in as "
+            f"{self.user}"
+        )
+
+        if self.user:
+
+            logger.info(
+                f"Bot user ID: "
+                f"{self.user.id}"
+            )
+
+        logger.info(
+            f"Discord.py version: "
+            f"{discord.__version__}"
+        )
+
+        logger.info(
+            f"OpenAI version: "
+            f"{openai.__version__}"
+        )
+
+        logger.info(
+            f"Database: "
+            f"{Config.DB_NAME}"
+        )
+
+        logger.info(
+            f"Guild count: "
+            f"{len(self.guilds)}"
+        )
+
+        # ======================================================================
+        # AI
+        # ======================================================================
+
+        logger.info(
+            f"Chat model: "
+            f"{Config.CHAT_MODEL}"
+        )
+
+        logger.info(
+            f"Reasoning model: "
+            f"{Config.REASONING_MODEL}"
+        )
+
+        logger.info(
+            f"Fast model: "
+            f"{Config.FAST_MODEL}"
+        )
+
+        logger.info(
+            f"Memory message limit: "
+            f"{Config.MEMORY_MESSAGE_LIMIT}"
+        )
+
+        logger.info(
+            f"Memory retention days: "
+            f"{Config.MEMORY_RETENTION_DAYS}"
+        )
+
+        # ======================================================================
+        # XP
+        # ======================================================================
+
+        logger.info(
+            f"XP: "
+            f"{Config.XP_PER_MESSAGE} "
+            f"per "
+            f"{Config.XP_COOLDOWN_SECONDS}s"
+        )
+
+        # ======================================================================
+        # V31
+        # ======================================================================
+
+        logger.info(
+            "Spam protection: READY"
+        )
+
+        logger.info(
+            "Ticket system: READY"
+        )
+
+        # ======================================================================
+        # V32
+        # ======================================================================
+
+        logger.info(
+            f"Achievements: "
+            f"{len(Config.ACHIEVEMENTS)} READY"
+        )
+
+        logger.info(
+            f"Titles: "
+            f"{len(Config.TITLES)} READY"
+        )
+
+        logger.info(
+            "Fortune system: READY"
+        )
+
+        logger.info(
+            "Profile system: READY"
+        )
+
+        logger.info(
+            "Akane Bot v32 READY"
+        )
+
+        logger.info(
+            "=============================================="
+        )
+
+    # ==========================================================================
+    # Global App Command Error Handler
+    # ==========================================================================
+
+    async def on_app_command_error(
         self,
         interaction: discord.Interaction,
-        button: discord.ui.Button
+        error: discord.app_commands.AppCommandError,
     ):
 
-        if (
-            interaction.user.id
-            != self.requested_by
-        ):
-
-            await interaction.response.send_message(
-                "この確認操作を"
-                "できるんは"
-                "実行した本人だけやで。",
-                ephemeral=True
-            )
-
-            return
-
-        if self.processing:
-
-            await interaction.response.send_message(
-                "いま処理中やで。",
-                ephemeral=True
-            )
-
-            return
-
-        self.processing = True
-
-        await interaction.response.defer(
-            ephemeral=True
+        command_name = (
+            interaction.command.name
+            if interaction.command
+            else "unknown"
         )
 
-        channel = (
-            interaction.channel
+        logger.exception(
+            "Global app command error | "
+            f"command={command_name} | "
+            f"user={interaction.user.id} | "
+            f"error={error}"
         )
 
-        guild = (
-            interaction.guild
+        error_message = (
+            "ごめん、コマンド処理中に"
+            "エラーが起きたで。"
         )
 
         try:
 
-            ticket = (
-                await self.bot.db
-                .get_ticket_by_channel(
-                    channel.id
-                )
-            )
-
-            if not ticket:
+            if interaction.response.is_done():
 
                 await interaction.followup.send(
-                    "Ticket情報が"
-                    "見つからへんかったわ。",
-                    ephemeral=True
+                    error_message,
+                    ephemeral=True,
                 )
-
-                return
-
-            (
-                ticket_id,
-                guild_id,
-                ticket_user_id,
-                category,
-                status,
-                created_at,
-                closed_at
-            ) = ticket
-
-            if status != "open":
-
-                await interaction.followup.send(
-                    "このTicketは"
-                    "すでに閉じられてるで。",
-                    ephemeral=True
-                )
-
-                return
-
-            # ==================================================================
-            # Transcript
-            # ==================================================================
-
-            transcript_bytes = (
-                await create_transcript(
-                    channel
-                )
-            )
-
-            transcript_filename = (
-                f"ticket-"
-                f"{channel.id}-"
-                f"transcript.txt"
-            )
-
-            # ==================================================================
-            # Log Channel
-            # ==================================================================
-
-            log_id = (
-                await self.bot.db
-                .get_config(
-                    guild.id,
-                    "log_ch"
-                )
-            )
-
-            log_channel = (
-                guild.get_channel(
-                    log_id
-                )
-                if log_id
-                else None
-            )
-
-            if log_channel:
-
-                log_embed = discord.Embed(
-                    title="📁 Ticket Closed",
-                    color=(
-                        discord.Color.orange()
-                    ),
-                    timestamp=(
-                        datetime.now(
-                            JST
-                        )
-                    )
-                )
-
-                log_embed.add_field(
-                    name="Ticket",
-                    value=(
-                        f"`{ticket_id}`"
-                    ),
-                    inline=True
-                )
-
-                log_embed.add_field(
-                    name="Channel",
-                    value=(
-                        f"`{channel.name}`"
-                    ),
-                    inline=True
-                )
-
-                log_embed.add_field(
-                    name="作成者",
-                    value=(
-                        f"<@{ticket_user_id}>"
-                    ),
-                    inline=True
-                )
-
-                log_embed.add_field(
-                    name="閉じた人",
-                    value=(
-                        interaction.user.mention
-                    ),
-                    inline=True
-                )
-
-                log_embed.add_field(
-                    name="カテゴリ",
-                    value=category,
-                    inline=True
-                )
-
-                log_embed.add_field(
-                    name="作成日時",
-                    value=created_at,
-                    inline=False
-                )
-
-                transcript_file = (
-                    discord.File(
-                        io.BytesIO(
-                            transcript_bytes
-                        ),
-                        filename=(
-                            transcript_filename
-                        )
-                    )
-                )
-
-                try:
-
-                    await log_channel.send(
-                        embed=log_embed,
-                        file=transcript_file
-                    )
-
-                except Exception as e:
-
-                    logger.exception(
-                        "Ticket log send failed | "
-                        f"error={e}"
-                    )
 
             else:
 
-                logger.warning(
-                    "Ticket closed without "
-                    "transcript log channel | "
-                    f"guild={guild.id}"
+                await interaction.response.send_message(
+                    error_message,
+                    ephemeral=True,
                 )
 
-            # ==================================================================
-            # DB Close
-            # ==================================================================
+        except Exception as send_error:
 
-            await self.bot.db.close_ticket(
-                channel.id
+            logger.exception(
+                "Failed to send app command "
+                f"error message: {send_error}"
             )
 
-            # ==================================================================
-            # Final Message
-            # ==================================================================
+    # ==========================================================================
+    # Discord Event Error Handler
+    # ==========================================================================
 
-            try:
+    async def on_error(
+        self,
+        event_method,
+        *args,
+        **kwargs,
+    ):
 
-                await channel.send(
-                    "🔒 Ticketを閉じるで。\n"
-                    "3秒後にこのチャンネルを"
-                    "削除するな。"
-                )
+        logger.exception(
+            "Unhandled Discord event error | "
+            f"event={event_method}"
+        )
 
-            except Exception:
 
-                pass
+# ==============================================================================
+# Bot Instance
+# ==============================================================================
+
+bot = AkaneBot()
+
+
+# ==============================================================================
+# Main
+# ==============================================================================
+
+if __name__ == "__main__":
+
+    if not Config.DISCORD_TOKEN:
+
+        logger.error(
+            "=============================================="
+        )
+
+        logger.error(
+            "DISCORD_TOKEN is missing."
+        )
+
+        logger.error(
+            "Railway Variables または "
+            ".env を確認してください。"
+        )
+
+        logger.error(
+            "=============================================="
+        )
+
+    else:
+
+        logger.info(
+            "Starting Discord connection..."
+        )
+
+        try:
+
+            bot.run(
+                Config.DISCORD_TOKEN
+            )
+
+        except discord.LoginFailure:
+
+            logger.exception(
+                "Discord login failed. "
+                "DISCORD_TOKENを確認してください。"
+            )
+
+        except KeyboardInterrupt:
 
             logger.info(
-                "Ticket closed | "
-                f"guild={guild.id} | "
-                f"channel={channel.id} | "
-                f"user={ticket_user_id} | "
-                f"closed_by="
-                f"{interaction.user.id}"
+                "Akane Bot stopped by user."
             )
-
-            await asyncio.sleep(
-                3
-            )
-
-            await channel.delete(
-                reason=(
-                    "Akane Bot Ticket Closed"
-                )
-            )
-
-        except discord.Forbidden:
-
-            logger.warning(
-                "Ticket close "
-                "permission denied."
-            )
-
-            try:
-
-                await interaction.followup.send(
-                    "Ticketを削除する"
-                    "権限が茜にないみたいや。",
-                    ephemeral=True
-                )
-
-            except Exception:
-
-                pass
 
         except Exception as e:
 
             logger.exception(
-                "Ticket close failed | "
-                f"error={e}"
+                f"Akane Bot fatal error: {e}"
             )
-
-            try:
-
-                await interaction.followup.send(
-                    "Ticketを閉じる処理中に"
-                    "エラーが起きたで。",
-                    ephemeral=True
-                )
-
-            except Exception:
-
-                pass
-
-        finally:
-
-            self.processing = False
-
-    # ==========================================================================
-    # Cancel
-    # ==========================================================================
-
-    @discord.ui.button(
-        label="キャンセル",
-        style=(
-            discord.ButtonStyle.secondary
-        ),
-        emoji="❌"
-    )
-    async def cancel(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
-
-        if (
-            interaction.user.id
-            != self.requested_by
-        ):
-
-            await interaction.response.send_message(
-                "この確認操作を"
-                "できるんは"
-                "実行した本人だけやで。",
-                ephemeral=True
-            )
-
-            return
-
-        await interaction.response.edit_message(
-            content=(
-                "Ticketを閉じるのを"
-                "キャンセルしたで。"
-            ),
-            view=None
-        )
-
-        self.stop()
