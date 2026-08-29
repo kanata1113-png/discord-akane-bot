@@ -9,6 +9,7 @@ from ai_manager import AiManager
 from config import Config
 from database import DatabaseManager
 from db_migrations import LATEST_SCHEMA_VERSION, run_migrations
+from repositories import RepositoryRegistry
 from views.event_view import EventView
 from views.ticket_view import TicketCloseView, TicketView
 
@@ -34,6 +35,8 @@ class AkaneBot(commands.Bot):
         )
 
         self.db = DatabaseManager(Config.DB_NAME)
+        self.repositories = RepositoryRegistry(Config.DB_NAME)
+        self.repos = self.repositories
         self.ai = AiManager()
 
     async def setup_hook(self):
