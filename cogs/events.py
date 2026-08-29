@@ -323,7 +323,7 @@ class EventsCog(commands.Cog):
             )
 
         # ----------------------------------------------------------------------
-        # AI Chat
+        # AI Chat - v29 Memory
         # ----------------------------------------------------------------------
 
         try:
@@ -343,61 +343,120 @@ class EventsCog(commands.Cog):
 
             if is_target:
 
-                allowed = (
-                    await self.bot.db.check_daily_limit(
-                        str(message.author.id)
+                clean_text = re.sub(
+                    r"<@!?\d+>",
+                    "",
+                    message.content
+                ).strip()
+
+                # メンションだけならAPIを呼ばない
+                if clean_text:
+
+                    allowed = (
+                        await self.bot.db.check_daily_limit(
+                            str(message.author.id)
+                        )
                     )
-                )
 
-                if not allowed:
+                    if not allowed:
 
-                    await message.reply(
-                        "今日の会話回数は終わりや。"
-                        "また明日な！"
-                    )
+                        await message.reply(
+                            "今日の会話回数は終わりや。"
+                            "また明日な！"
+                        )
 
-                else:
+                    else:
 
-                    clean_text = re.sub(
-                        r"<@!?\d+>",
-                        "",
-                        message.content
-                    ).strip()
+                        # ======================================================
+                        # ★ 過去会話取得
+                        # ======================================================
 
-                    if clean_text:
+                        history = (
+                            await self.bot.db
+                            .get_conversation_history(
+                                guild_id=message.guild.id,
+                                channel_id=message.channel.id,
+                                user_id=message.author.id,
+                                limit=Config.MEMORY_MESSAGE_LIMIT
+                            )
+                        )
 
                         async with message.channel.typing():
 
-                            reply = (
-                                await self.bot.ai.chat(
-                                    message.author.display_name,
-                                    clean_text
-                                )
+                            (
+                                reply,
+                                selected_model,
+                                route
+                            ) = await self.bot.ai.chat(
+                                user_name=(
+                                    message.author.display_name
+                                ),
+                                content=clean_text,
+                                history=history
                             )
 
-                            if not reply or not reply.strip():
-                                reply = Config.EMPTY_MSG
+                        if (
+                            not reply
+                            or not reply.strip()
+                        ):
 
-                            if len(reply) > 1900:
+                            reply = Config.EMPTY_MSG
 
-                                file = discord.File(
-                                    io.BytesIO(
-                                        reply.encode()
-                                    ),
-                                    filename="reply.txt"
-                                )
+                        # ======================================================
+                        # 正常応答のみ会話履歴へ保存
+                        # ======================================================
 
-                                await message.reply(
-                                    "長くなったから"
-                                    "ファイルにしたで！",
-                                    file=file
-                                )
+                        error_responses = {
+                            Config.ERROR_MSG,
+                            Config.TIMEOUT_MSG,
+                            Config.EMPTY_MSG,
+                        }
 
-                            else:
+                        if reply not in error_responses:
 
-                                await message.reply(
-                                    reply
-                                )
+                            await self.bot.db.add_conversation_message(
+                                guild_id=message.guild.id,
+                                channel_id=message.channel.id,
+                                user_id=message.author.id,
+                                role="user",
+                                content=clean_text
+                            )
+
+                            await self.bot.db.add_conversation_message(
+                                guild_id=message.guild.id,
+                                channel_id=message.channel.id,
+                                user_id=message.author.id,
+                                role="assistant",
+                                content=reply
+                            )
+
+                        logger.info(
+                            "AI response | "
+                            f"user={message.author.id} | "
+                            f"model={selected_model} | "
+                            f"route={route}"
+                        )
+
+                        if len(reply) > 1900:
+
+                            file = discord.File(
+                                io.BytesIO(
+                                    reply.encode()
+                                ),
+                                filename="reply.txt"
+                            )
+
+                            await message.reply(
+                                "長くなったから"
+                                "ファイルにしたで！",
+                                file=file
+                            )
+
+                        else:
+
+                            await message.reply(
+                                reply
+                            )
 
         except Exception as e:
 
