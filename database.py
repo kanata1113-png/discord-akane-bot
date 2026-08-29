@@ -8,20 +8,26 @@ from config import Config, JST
 
 class DatabaseManager:
 
-    def __init__(self, db_path: str):
+    def __init__(
+        self,
+        db_path: str
+    ):
+
         self.path = db_path
 
     # ==========================================================================
-    # 初期化
+    # Database Init
     # ==========================================================================
 
     async def init(self):
 
-        async with aiosqlite.connect(self.path) as db:
+        async with aiosqlite.connect(
+            self.path
+        ) as db:
 
-            # ------------------------------------------------------------------
-            # AI 利用回数
-            # ------------------------------------------------------------------
+            # ==================================================================
+            # AI Usage
+            # ==================================================================
 
             await db.execute(
                 """
@@ -34,9 +40,9 @@ class DatabaseManager:
                 """
             )
 
-            # ------------------------------------------------------------------
+            # ==================================================================
             # Starboard
-            # ------------------------------------------------------------------
+            # ==================================================================
 
             await db.execute(
                 """
@@ -46,9 +52,9 @@ class DatabaseManager:
                 """
             )
 
-            # ------------------------------------------------------------------
+            # ==================================================================
             # Guild Settings
-            # ------------------------------------------------------------------
+            # ==================================================================
 
             await db.execute(
                 """
@@ -62,9 +68,9 @@ class DatabaseManager:
                 """
             )
 
-            # ------------------------------------------------------------------
-            # Users / Level
-            # ------------------------------------------------------------------
+            # ==================================================================
+            # Users
+            # ==================================================================
 
             await db.execute(
                 """
@@ -76,9 +82,9 @@ class DatabaseManager:
                 """
             )
 
-            # ------------------------------------------------------------------
+            # ==================================================================
             # Level Rewards
-            # ------------------------------------------------------------------
+            # ==================================================================
 
             await db.execute(
                 """
@@ -91,9 +97,9 @@ class DatabaseManager:
                 """
             )
 
-            # ------------------------------------------------------------------
+            # ==================================================================
             # Reaction Roles
-            # ------------------------------------------------------------------
+            # ==================================================================
 
             await db.execute(
                 """
@@ -105,9 +111,9 @@ class DatabaseManager:
                 """
             )
 
-            # ------------------------------------------------------------------
+            # ==================================================================
             # NG Words
-            # ------------------------------------------------------------------
+            # ==================================================================
 
             await db.execute(
                 """
@@ -118,9 +124,9 @@ class DatabaseManager:
                 """
             )
 
-            # ------------------------------------------------------------------
+            # ==================================================================
             # Auto Replies
-            # ------------------------------------------------------------------
+            # ==================================================================
 
             await db.execute(
                 """
@@ -132,9 +138,9 @@ class DatabaseManager:
                 """
             )
 
-            # ------------------------------------------------------------------
-            # Reminders
-            # ------------------------------------------------------------------
+            # ==================================================================
+            # Reminder
+            # ==================================================================
 
             await db.execute(
                 """
@@ -148,9 +154,9 @@ class DatabaseManager:
                 """
             )
 
-            # ------------------------------------------------------------------
+            # ==================================================================
             # Monthly Rules
-            # ------------------------------------------------------------------
+            # ==================================================================
 
             await db.execute(
                 """
@@ -162,9 +168,9 @@ class DatabaseManager:
                 """
             )
 
-            # ------------------------------------------------------------------
-            # v29 AI Conversation Memory
-            # ------------------------------------------------------------------
+            # ==================================================================
+            # AI Conversation Memory
+            # ==================================================================
 
             await db.execute(
                 """
@@ -182,7 +188,8 @@ class DatabaseManager:
 
             await db.execute(
                 """
-                CREATE INDEX IF NOT EXISTS idx_conversation_lookup
+                CREATE INDEX IF NOT EXISTS
+                idx_conversation_lookup
                 ON conversation_history (
                     guild_id,
                     channel_id,
@@ -192,10 +199,41 @@ class DatabaseManager:
                 """
             )
 
+            # ==================================================================
+            # V31 Tickets
+            # ==================================================================
+
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tickets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id INTEGER NOT NULL,
+                    channel_id INTEGER NOT NULL UNIQUE,
+                    user_id INTEGER NOT NULL,
+                    category TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'open',
+                    created_at TEXT NOT NULL,
+                    closed_at TEXT
+                )
+                """
+            )
+
+            await db.execute(
+                """
+                CREATE INDEX IF NOT EXISTS
+                idx_ticket_user
+                ON tickets (
+                    guild_id,
+                    user_id,
+                    status
+                )
+                """
+            )
+
             await db.commit()
 
     # ==========================================================================
-    # DB Helper
+    # DB Helpers
     # ==========================================================================
 
     async def _execute(
@@ -204,7 +242,9 @@ class DatabaseManager:
         params=()
     ):
 
-        async with aiosqlite.connect(self.path) as db:
+        async with aiosqlite.connect(
+            self.path
+        ) as db:
 
             await db.execute(
                 query,
@@ -219,7 +259,9 @@ class DatabaseManager:
         params=()
     ):
 
-        async with aiosqlite.connect(self.path) as db:
+        async with aiosqlite.connect(
+            self.path
+        ) as db:
 
             cursor = await db.execute(
                 query,
@@ -234,7 +276,9 @@ class DatabaseManager:
         params=()
     ):
 
-        async with aiosqlite.connect(self.path) as db:
+        async with aiosqlite.connect(
+            self.path
+        ) as db:
 
             cursor = await db.execute(
                 query,
@@ -346,22 +390,13 @@ class DatabaseManager:
         )
 
     # ==========================================================================
-    # XP / Level - v30
+    # XP / Level
     # ==========================================================================
 
     @staticmethod
     def required_xp(
         level: int
     ) -> int:
-
-        """
-        現在レベルから次レベルまでに必要なXP
-
-        Lv.1 -> 100 XP
-        Lv.2 -> 200 XP
-        Lv.3 -> 300 XP
-        ...
-        """
 
         return max(
             100,
@@ -387,10 +422,6 @@ class DatabaseManager:
             )
         )
 
-        # ----------------------------------------------------------------------
-        # 初回ユーザー
-        # ----------------------------------------------------------------------
-
         if not row:
 
             level = 1
@@ -398,7 +429,6 @@ class DatabaseManager:
 
             leveled_up = False
 
-            # 大量XPを一気に追加した場合にも対応
             while xp >= self.required_xp(
                 level
             ):
@@ -436,20 +466,11 @@ class DatabaseManager:
                 xp
             )
 
-        # ----------------------------------------------------------------------
-        # 既存ユーザー
-        # ----------------------------------------------------------------------
-
         xp, level = row
 
         xp += amount
 
         leveled_up = False
-
-        # ----------------------------------------------------------------------
-        # v30
-        # XP繰り越し対応
-        # ----------------------------------------------------------------------
 
         while xp >= self.required_xp(
             level
@@ -504,13 +525,13 @@ class DatabaseManager:
             )
         )
 
-        if result:
-
-            return result
-
         return (
-            1,
-            0
+            result
+            if result
+            else (
+                1,
+                0
+            )
         )
 
     async def get_level_info(
@@ -537,7 +558,6 @@ class DatabaseManager:
             else 0
         )
 
-        # 念のため表示が100%を超えないよう制限
         percentage = max(
             0.0,
             min(
@@ -694,7 +714,7 @@ class DatabaseManager:
         )
 
     # ==========================================================================
-    # Conversation Memory - v29 / v30
+    # AI Conversation Memory
     # ==========================================================================
 
     async def add_conversation_message(
@@ -719,7 +739,6 @@ class DatabaseManager:
 
             return
 
-        # DB肥大化防止
         content = content[:4000]
 
         created_at = datetime.now(
@@ -757,7 +776,6 @@ class DatabaseManager:
         limit: int = Config.MEMORY_MESSAGE_LIMIT
     ):
 
-        # 念のため異常値防止
         limit = max(
             1,
             min(
@@ -786,8 +804,6 @@ class DatabaseManager:
             )
         )
 
-        # DESCで新しい順に取得したので
-        # AIへ渡す前に古い順へ戻す
         rows.reverse()
 
         return [
@@ -942,3 +958,159 @@ class DatabaseManager:
             )
 
         return count
+
+    # ==========================================================================
+    # V31 Ticket
+    # ==========================================================================
+
+    async def get_open_ticket(
+        self,
+        guild_id: int,
+        user_id: int
+    ):
+
+        return await self._fetchone(
+            """
+            SELECT
+                id,
+                channel_id,
+                category,
+                created_at
+            FROM tickets
+            WHERE guild_id=?
+            AND user_id=?
+            AND status='open'
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (
+                guild_id,
+                user_id
+            )
+        )
+
+    async def get_ticket_by_channel(
+        self,
+        channel_id: int
+    ):
+
+        return await self._fetchone(
+            """
+            SELECT
+                id,
+                guild_id,
+                user_id,
+                category,
+                status,
+                created_at,
+                closed_at
+            FROM tickets
+            WHERE channel_id=?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (
+                channel_id,
+            )
+        )
+
+    async def create_ticket(
+        self,
+        guild_id: int,
+        channel_id: int,
+        user_id: int,
+        category: str
+    ):
+
+        existing = await self.get_open_ticket(
+            guild_id,
+            user_id
+        )
+
+        if existing:
+
+            raise ValueError(
+                "User already has an open ticket."
+            )
+
+        created_at = datetime.now(
+            JST
+        ).isoformat()
+
+        await self._execute(
+            """
+            INSERT INTO tickets
+            (
+                guild_id,
+                channel_id,
+                user_id,
+                category,
+                status,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, 'open', ?)
+            """,
+            (
+                guild_id,
+                channel_id,
+                user_id,
+                category,
+                created_at
+            )
+        )
+
+    async def close_ticket(
+        self,
+        channel_id: int
+    ):
+
+        closed_at = datetime.now(
+            JST
+        ).isoformat()
+
+        await self._execute(
+            """
+            UPDATE tickets
+            SET
+                status='closed',
+                closed_at=?
+            WHERE channel_id=?
+            AND status='open'
+            """,
+            (
+                closed_at,
+                channel_id
+            )
+        )
+
+    async def count_open_tickets(
+        self,
+        guild_id: int
+    ) -> int:
+
+        row = await self._fetchone(
+            """
+            SELECT COUNT(*)
+            FROM tickets
+            WHERE guild_id=?
+            AND status='open'
+            """,
+            (
+                guild_id,
+            )
+        )
+
+        return (
+            int(row[0])
+            if row
+            else 0
+        )
+
+    async def cleanup_missing_ticket(
+        self,
+        channel_id: int
+    ):
+
+        await self.close_ticket(
+            channel_id
+        )
