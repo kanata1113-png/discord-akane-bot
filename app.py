@@ -11,6 +11,7 @@ from database import DatabaseManager
 from db_facade import DatabaseFacade
 from db_migrations import LATEST_SCHEMA_VERSION, run_migrations
 from repositories import RepositoryRegistry
+from runtime_preflight import validate_runtime_environment
 from services import ServiceRegistry
 from views.event_view import EventView
 from views.ticket_view import TicketCloseView, TicketView
@@ -81,6 +82,13 @@ class AkaneBot(commands.Bot):
         )
         logger.info("OpenAI API mode: Responses API")
         logger.info("==============================================")
+
+        try:
+            validate_runtime_environment()
+            logger.info("Runtime preflight passed.")
+        except Exception as error:
+            logger.exception(f"Runtime preflight failed: {error}")
+            raise
 
         try:
             await self.db.init()
