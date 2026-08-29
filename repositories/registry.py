@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from db_access import SQLiteStore
 from repositories.guild_repository import GuildRepository
+from repositories.maintenance_repository import MaintenanceRepository
 from repositories.memory_repository import MemoryRepository
 from repositories.ranking_repository import RankingRepository
 from repositories.ticket_repository import TicketRepository
@@ -18,3 +19,4 @@ class RepositoryRegistry:
         self.tickets = TicketRepository(self.store)
         self.memory = MemoryRepository(self.store)
         self.rankings = RankingRepository(self.store)
+        self.maintenance = MaintenanceRepository(self.store)
