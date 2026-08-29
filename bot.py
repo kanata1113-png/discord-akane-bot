@@ -74,7 +74,7 @@ class AkaneBot(commands.Bot):
         )
 
         logger.info(
-            "Akane Bot v33 starting..."
+            "Akane Bot v34 starting..."
         )
 
         logger.info(
@@ -83,18 +83,31 @@ class AkaneBot(commands.Bot):
         )
 
         logger.info(
-            f"Chat model: "
-            f"{Config.CHAT_MODEL}"
+            "GPT-5.6 routing:"
         )
 
         logger.info(
-            f"Reasoning model: "
-            f"{Config.REASONING_MODEL}"
+            f"  Normal chat: "
+            f"{Config.CHAT_MODEL} "
+            f"[{Config.CHAT_REASONING_EFFORT}]"
         )
 
         logger.info(
-            f"Fast model: "
-            f"{Config.FAST_MODEL}"
+            f"  Reasoning: "
+            f"{Config.REASONING_MODEL} "
+            f"[{Config.REASONING_EFFORT}]"
+        )
+
+        logger.info(
+            f"  Deep reasoning: "
+            f"{Config.REASONING_MODEL} "
+            f"[{Config.DEEP_REASONING_EFFORT}]"
+        )
+
+        logger.info(
+            f"  Fast tasks: "
+            f"{Config.FAST_MODEL} "
+            f"[{Config.FAST_REASONING_EFFORT}]"
         )
 
         logger.info(
@@ -114,8 +127,7 @@ class AkaneBot(commands.Bot):
         )
 
         logger.info(
-            f"Ranking limit: "
-            f"{Config.RANKING_LIMIT}"
+            "OpenAI API mode: Responses API"
         )
 
         logger.info(
@@ -133,10 +145,6 @@ class AkaneBot(commands.Bot):
             logger.info(
                 f"Database initialized: "
                 f"{Config.DB_NAME}"
-            )
-
-            logger.info(
-                "Weekly XP table: READY"
             )
 
         except Exception as e:
@@ -291,7 +299,7 @@ class AkaneBot(commands.Bot):
         )
 
         logger.info(
-            f"OpenAI version: "
+            f"OpenAI SDK version: "
             f"{openai.__version__}"
         )
 
@@ -306,8 +314,26 @@ class AkaneBot(commands.Bot):
         )
 
         logger.info(
-            f"Current week: "
-            f"{self.db.current_week_key()}"
+            "GPT-5.6 model routing:"
+        )
+
+        logger.info(
+            f"Normal = "
+            f"{Config.CHAT_MODEL}"
+        )
+
+        logger.info(
+            f"Reasoning = "
+            f"{Config.REASONING_MODEL}"
+        )
+
+        logger.info(
+            f"Fast = "
+            f"{Config.FAST_MODEL}"
+        )
+
+        logger.info(
+            "Responses API: READY"
         )
 
         logger.info(
@@ -347,7 +373,7 @@ class AkaneBot(commands.Bot):
         )
 
         logger.info(
-            "Akane Bot v33 READY"
+            "Akane Bot v34 READY"
         )
 
         logger.info(
