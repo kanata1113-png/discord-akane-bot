@@ -16,12 +16,17 @@ from config import Config, JST
 from views.event_view import EventView
 
 
-logger = logging.getLogger("AkaneBot")
+logger = logging.getLogger(
+    "AkaneBot"
+)
 
 
 class GeneralCog(commands.Cog):
 
-    def __init__(self, bot):
+    def __init__(
+        self,
+        bot
+    ):
 
         self.bot = bot
 
@@ -36,6 +41,7 @@ class GeneralCog(commands.Cog):
     ):
 
         if not Config.ACHIEVEMENT_NOTIFICATIONS:
+
             return
 
         achievement_keys = unlocks.get(
@@ -52,6 +58,7 @@ class GeneralCog(commands.Cog):
             not achievement_keys
             and not title_keys
         ):
+
             return
 
         lines = []
@@ -62,14 +69,13 @@ class GeneralCog(commands.Cog):
                 key
             )
 
-            if not data:
-                continue
+            if data:
 
-            lines.append(
-                f"🏆 実績解除: "
-                f"**{data['emoji']} "
-                f"{data['name']}**"
-            )
+                lines.append(
+                    f"🏆 実績解除: "
+                    f"**{data['emoji']} "
+                    f"{data['name']}**"
+                )
 
         for key in title_keys:
 
@@ -77,15 +83,15 @@ class GeneralCog(commands.Cog):
                 key
             )
 
-            if not data:
-                continue
+            if data:
 
-            lines.append(
-                f"🎖️ 称号獲得: "
-                f"**{data['name']}**"
-            )
+                lines.append(
+                    f"🎖️ 称号獲得: "
+                    f"**{data['name']}**"
+                )
 
         if not lines:
+
             return
 
         try:
@@ -103,6 +109,40 @@ class GeneralCog(commands.Cog):
                 "Unlock notification failed | "
                 f"error={e}"
             )
+
+    @staticmethod
+    def _ranking_medal(
+        position: int
+    ) -> str:
+
+        medals = {
+            1: "🥇",
+            2: "🥈",
+            3: "🥉",
+        }
+
+        return medals.get(
+            position,
+            f"`{position}.`"
+        )
+
+    def _member_name(
+        self,
+        guild: discord.Guild,
+        user_id: int
+    ) -> str:
+
+        member = guild.get_member(
+            int(
+                user_id
+            )
+        )
+
+        if member:
+
+            return member.display_name
+
+        return f"User {user_id}"
 
     # ==========================================================================
     # Translate
@@ -123,11 +163,9 @@ class GeneralCog(commands.Cog):
 
         try:
 
-            result = (
-                await self.bot.ai.translate(
-                    text,
-                    language
-                )
+            result = await self.bot.ai.translate(
+                text,
+                language
             )
 
             if (
@@ -197,11 +235,9 @@ class GeneralCog(commands.Cog):
 
         try:
 
-            result = (
-                await self.bot.ai.define_word(
-                    word,
-                    wiki_mode
-                )
+            result = await self.bot.ai.define_word(
+                word,
+                wiki_mode
             )
 
             if (
@@ -244,18 +280,12 @@ class GeneralCog(commands.Cog):
                 )
             )
 
-            embed = discord.Embed(
-                title=title,
-                description=result,
-                color=discord.Color.green()
-            )
-
-            embed.set_footer(
-                text="Powered by AI Dictionary"
-            )
-
             await interaction.followup.send(
-                embed=embed
+                embed=discord.Embed(
+                    title=title,
+                    description=result,
+                    color=discord.Color.green()
+                )
             )
 
         except Exception as e:
@@ -304,10 +334,8 @@ class GeneralCog(commands.Cog):
                 in interaction.channel.history(
                     limit=100
                 )
-                if (
-                    message.author
-                    == interaction.user
-                )
+                if message.author
+                == interaction.user
             ][:back]
 
             if not messages:
@@ -321,23 +349,17 @@ class GeneralCog(commands.Cog):
 
             messages.reverse()
 
-            result = (
-                await self.bot.ai.summarize(
-                    messages
-                )
+            result = await self.bot.ai.summarize(
+                messages
             )
-
-            if (
-                not result
-                or not result.strip()
-            ):
-
-                result = Config.ERROR_MSG
 
             await interaction.followup.send(
                 embed=discord.Embed(
                     title="📝 発言要約",
-                    description=result,
+                    description=(
+                        result
+                        or Config.ERROR_MSG
+                    ),
                     color=discord.Color.orange()
                 ),
                 ephemeral=True
@@ -399,8 +421,7 @@ class GeneralCog(commands.Cog):
         embed = discord.Embed(
             title=f"📅 {title}",
             description=(
-                f"日時: "
-                f"<t:{timestamp}:F>"
+                f"日時: <t:{timestamp}:F>"
             ),
             color=discord.Color.green()
         )
@@ -432,26 +453,14 @@ class GeneralCog(commands.Cog):
                     )
                 ),
                 location="Discord",
-                entity_type=(
-                    discord.EntityType.external
-                ),
-                privacy_level=(
-                    discord.PrivacyLevel.guild_only
-                )
-            )
-
-        except discord.Forbidden:
-
-            logger.warning(
-                "Scheduled event "
-                "permission denied."
+                entity_type=discord.EntityType.external,
+                privacy_level=discord.PrivacyLevel.guild_only
             )
 
         except Exception as e:
 
             logger.exception(
-                "Scheduled event "
-                f"creation failed: {e}"
+                f"Scheduled event failed: {e}"
             )
 
     # ==========================================================================
@@ -507,10 +516,7 @@ class GeneralCog(commands.Cog):
             )
         )
 
-        message = (
-            await interaction
-            .original_response()
-        )
+        message = await interaction.original_response()
 
         for index in range(
             len(options)
@@ -584,17 +590,8 @@ class GeneralCog(commands.Cog):
                     )
 
                     if len(found) >= 100:
+
                         break
-
-        except discord.Forbidden:
-
-            await interaction.followup.send(
-                "そのチャンネルの履歴を見る"
-                "権限がないみたいや。",
-                ephemeral=True
-            )
-
-            return
 
         except Exception as e:
 
@@ -639,8 +636,7 @@ class GeneralCog(commands.Cog):
             )
 
             await interaction.followup.send(
-                f"{len(found)}件 "
-                "(ファイル)",
+                f"{len(found)}件",
                 file=file,
                 ephemeral=True
             )
@@ -659,8 +655,7 @@ class GeneralCog(commands.Cog):
             await interaction.followup.send(
                 embed=discord.Embed(
                     title=(
-                        f"検索: "
-                        f"{keyword}"
+                        f"検索: {keyword}"
                     ),
                     description=description
                 ),
@@ -682,17 +677,13 @@ class GeneralCog(commands.Cog):
 
         try:
 
-            info = (
-                await self.bot.db
-                .get_level_info(
-                    interaction.user.id
-                )
+            info = await self.bot.db.get_level_info(
+                interaction.user.id
             )
 
             await interaction.response.send_message(
                 (
-                    f"📊 "
-                    f"**Lv.{info['level']}**\n"
+                    f"📊 **Lv.{info['level']}**\n"
                     f"✨ XP: "
                     f"**{info['xp']} / "
                     f"{info['required_xp']}**\n"
@@ -709,18 +700,17 @@ class GeneralCog(commands.Cog):
             )
 
             await interaction.response.send_message(
-                "レベル情報を"
-                "取得できへんかったわ。",
+                "レベル情報を取得できへんかったわ。",
                 ephemeral=True
             )
 
     # ==========================================================================
-    # Leaderboard
+    # Legacy Leaderboard
     # ==========================================================================
 
     @app_commands.command(
         name="leaderboard",
-        description="ランキング TOP30"
+        description="レベルランキング TOP30"
     )
     async def leaderboard(
         self,
@@ -733,11 +723,8 @@ class GeneralCog(commands.Cog):
 
         try:
 
-            rows = (
-                await self.bot.db
-                .get_leaderboard(
-                    30
-                )
+            rows = await self.bot.db.get_leaderboard(
+                30
             )
 
             lines = []
@@ -751,31 +738,25 @@ class GeneralCog(commands.Cog):
                 1
             ):
 
-                member = (
-                    interaction.guild
-                    .get_member(
-                        int(
-                            user_id
-                        )
+                member = interaction.guild.get_member(
+                    int(
+                        user_id
                     )
                 )
 
-                name = (
-                    member.display_name
-                    if member
-                    else "Unknown"
-                )
+                if not member:
+
+                    continue
 
                 lines.append(
                     f"{index}. "
-                    f"{name} "
-                    f"(Lv.{level_value} / "
-                    f"XP {xp})"
+                    f"{member.display_name} "
+                    f"(Lv.{level_value} / XP {xp})"
                 )
 
             await interaction.followup.send(
                 embed=discord.Embed(
-                    title="🏆 ランキング",
+                    title="🏆 レベルランキング",
                     description=(
                         "\n".join(
                             lines
@@ -826,8 +807,7 @@ class GeneralCog(commands.Cog):
         if minutes > 10080:
 
             await interaction.response.send_message(
-                "最大7日"
-                "（10080分）までにしてな！",
+                "最大7日までにしてな！",
                 ephemeral=True
             )
 
@@ -860,8 +840,7 @@ class GeneralCog(commands.Cog):
         except Exception as e:
 
             logger.exception(
-                "Reminder registration "
-                f"failed: {e}"
+                f"/remind failed: {e}"
             )
 
             await interaction.response.send_message(
@@ -886,8 +865,7 @@ class GeneralCog(commands.Cog):
         if not interaction.guild:
 
             await interaction.response.send_message(
-                "この機能は"
-                "サーバー内専用やで。",
+                "この機能はサーバー内専用やで。",
                 ephemeral=True
             )
 
@@ -895,19 +873,10 @@ class GeneralCog(commands.Cog):
 
         try:
 
-            count = (
-                await self.bot.db
-                .count_conversation_history(
-                    guild_id=(
-                        interaction.guild.id
-                    ),
-                    channel_id=(
-                        interaction.channel.id
-                    ),
-                    user_id=(
-                        interaction.user.id
-                    )
-                )
+            count = await self.bot.db.count_conversation_history(
+                interaction.guild.id,
+                interaction.channel.id,
+                interaction.user.id
             )
 
             active_count = min(
@@ -915,30 +884,18 @@ class GeneralCog(commands.Cog):
                 Config.MEMORY_MESSAGE_LIMIT
             )
 
-            embed = discord.Embed(
-                title="🧠 茜の会話メモリー",
-                description=(
-                    "このチャンネルで"
-                    "保存されてる履歴: "
-                    f"**{count}件**\n"
-                    "次の会話で参照する"
-                    "最大履歴: "
-                    f"**{active_count}件**\n"
-                    "保存期間: "
-                    f"**{Config.MEMORY_RETENTION_DAYS}日**"
-                ),
-                color=discord.Color.purple()
-            )
-
-            embed.set_footer(
-                text=(
-                    "/forget で"
-                    "自分の履歴を消せるで"
-                )
-            )
-
             await interaction.response.send_message(
-                embed=embed,
+                embed=discord.Embed(
+                    title="🧠 茜の会話メモリー",
+                    description=(
+                        f"保存履歴: **{count}件**\n"
+                        f"参照最大: "
+                        f"**{active_count}件**\n"
+                        f"保存期間: "
+                        f"**{Config.MEMORY_RETENTION_DAYS}日**"
+                    ),
+                    color=discord.Color.purple()
+                ),
                 ephemeral=True
             )
 
@@ -949,8 +906,7 @@ class GeneralCog(commands.Cog):
             )
 
             await interaction.response.send_message(
-                "記憶情報を"
-                "確認できへんかったわ。",
+                "記憶情報を確認できへんかったわ。",
                 ephemeral=True
             )
 
@@ -960,13 +916,7 @@ class GeneralCog(commands.Cog):
 
     @app_commands.command(
         name="forget",
-        description="茜が覚えている自分の会話履歴を削除"
-    )
-    @app_commands.describe(
-        all_channels=(
-            "このサーバー内の"
-            "全チャンネル履歴を消すか"
-        )
+        description="自分のAI会話履歴を削除"
     )
     async def forget(
         self,
@@ -977,8 +927,7 @@ class GeneralCog(commands.Cog):
         if not interaction.guild:
 
             await interaction.response.send_message(
-                "この機能は"
-                "サーバー内専用やで。",
+                "この機能はサーバー内専用やで。",
                 ephemeral=True
             )
 
@@ -988,48 +937,23 @@ class GeneralCog(commands.Cog):
 
             if all_channels:
 
-                deleted = (
-                    await self.bot.db
-                    .clear_all_user_history(
-                        guild_id=(
-                            interaction.guild.id
-                        ),
-                        user_id=(
-                            interaction.user.id
-                        )
-                    )
-                )
-
-                await interaction.response.send_message(
-                    "🧹 このサーバーで覚えてた"
-                    f"会話履歴を **{deleted}件** "
-                    "消したで！",
-                    ephemeral=True
+                deleted = await self.bot.db.clear_all_user_history(
+                    interaction.guild.id,
+                    interaction.user.id
                 )
 
             else:
 
-                deleted = (
-                    await self.bot.db
-                    .clear_conversation_history(
-                        guild_id=(
-                            interaction.guild.id
-                        ),
-                        channel_id=(
-                            interaction.channel.id
-                        ),
-                        user_id=(
-                            interaction.user.id
-                        )
-                    )
+                deleted = await self.bot.db.clear_conversation_history(
+                    interaction.guild.id,
+                    interaction.channel.id,
+                    interaction.user.id
                 )
 
-                await interaction.response.send_message(
-                    "🧹 このチャンネルで覚えてた"
-                    f"会話履歴を **{deleted}件** "
-                    "消したで！",
-                    ephemeral=True
-                )
+            await interaction.response.send_message(
+                f"🧹 **{deleted}件** 消したで！",
+                ephemeral=True
+            )
 
         except Exception as e:
 
@@ -1044,7 +968,7 @@ class GeneralCog(commands.Cog):
             )
 
     # ==========================================================================
-    # V32 Profile
+    # Profile - V33
     # ==========================================================================
 
     @app_commands.command(
@@ -1062,8 +986,7 @@ class GeneralCog(commands.Cog):
         if not interaction.guild:
 
             await interaction.response.send_message(
-                "この機能は"
-                "サーバー内専用やで。",
+                "この機能はサーバー内専用やで。",
                 ephemeral=True
             )
 
@@ -1076,48 +999,44 @@ class GeneralCog(commands.Cog):
 
         try:
 
-            level_info = (
-                await self.bot.db
-                .get_level_info(
-                    target.id
-                )
+            await self.bot.db.evaluate_progress_unlocks(
+                interaction.guild.id,
+                target.id
             )
 
-            stats = (
-                await self.bot.db
-                .get_user_stats(
-                    interaction.guild.id,
-                    target.id
-                )
+            level_info = await self.bot.db.get_level_info(
+                target.id
             )
 
-            achievements = (
-                await self.bot.db
-                .get_user_achievements(
-                    interaction.guild.id,
-                    target.id
-                )
+            stats = await self.bot.db.get_user_stats(
+                interaction.guild.id,
+                target.id
             )
 
-            titles = (
-                await self.bot.db
-                .get_user_titles(
-                    interaction.guild.id,
-                    target.id
-                )
+            achievements = await self.bot.db.get_user_achievements(
+                interaction.guild.id,
+                target.id
             )
 
-            equipped_key = (
-                await self.bot.db
-                .get_equipped_title(
-                    interaction.guild.id,
-                    target.id
-                )
+            titles = await self.bot.db.get_user_titles(
+                interaction.guild.id,
+                target.id
             )
 
-            # ==================================================================
-            # Title
-            # ==================================================================
+            equipped_key = await self.bot.db.get_equipped_title(
+                interaction.guild.id,
+                target.id
+            )
+
+            weekly_xp = await self.bot.db.get_user_weekly_xp(
+                interaction.guild.id,
+                target.id
+            )
+
+            weekly_rank = await self.bot.db.get_weekly_rank(
+                interaction.guild.id,
+                target.id
+            )
 
             if (
                 equipped_key
@@ -1125,55 +1044,37 @@ class GeneralCog(commands.Cog):
                 in Config.TITLES
             ):
 
-                equipped_title = (
-                    Config.TITLES[
-                        equipped_key
-                    ]["name"]
-                )
+                equipped_title = Config.TITLES[
+                    equipped_key
+                ]["name"]
 
             else:
 
-                equipped_title = (
-                    "称号なし"
-                )
+                equipped_title = "称号なし"
 
-            # ==================================================================
-            # XP Bar
-            # ==================================================================
-
-            percentage = (
-                level_info[
-                    "percentage"
-                ]
-            )
-
-            bar_length = 10
+            percentage = level_info[
+                "percentage"
+            ]
 
             filled = int(
                 percentage
-                / 100
-                * bar_length
+                / 10
             )
 
             filled = max(
                 0,
                 min(
                     filled,
-                    bar_length
+                    10
                 )
             )
 
             progress_bar = (
                 "🟩" * filled
                 + "⬜" * (
-                    bar_length
-                    - filled
+                    10 - filled
                 )
             )
-
-            # ==================================================================
-            # Achievement Preview
-            # ==================================================================
 
             preview_lines = []
 
@@ -1184,54 +1085,33 @@ class GeneralCog(commands.Cog):
                 -Config.PROFILE_ACHIEVEMENT_PREVIEW:
             ]:
 
-                data = (
-                    Config.ACHIEVEMENTS.get(
-                        achievement_key
+                data = Config.ACHIEVEMENTS.get(
+                    achievement_key
+                )
+
+                if data:
+
+                    preview_lines.append(
+                        f"{data['emoji']} "
+                        f"{data['name']}"
                     )
-                )
-
-                if not data:
-                    continue
-
-                preview_lines.append(
-                    f"{data['emoji']} "
-                    f"{data['name']}"
-                )
-
-            achievement_preview = (
-                "\n".join(
-                    preview_lines
-                )
-                if preview_lines
-                else "まだ実績なし"
-            )
-
-            # ==================================================================
-            # Embed
-            # ==================================================================
 
             embed = discord.Embed(
                 title=(
                     f"🌸 "
                     f"{target.display_name}"
-                    f" のプロフィール"
+                    " のプロフィール"
                 ),
                 color=discord.Color.pink()
             )
 
             embed.set_thumbnail(
-                url=(
-                    target
-                    .display_avatar
-                    .url
-                )
+                url=target.display_avatar.url
             )
 
             embed.add_field(
                 name="🎖️ 称号",
-                value=(
-                    f"**{equipped_title}**"
-                ),
+                value=f"**{equipped_title}**",
                 inline=False
             )
 
@@ -1247,11 +1127,8 @@ class GeneralCog(commands.Cog):
             embed.add_field(
                 name="✨ XP",
                 value=(
-                    f"**"
-                    f"{level_info['xp']} "
-                    f"/ "
-                    f"{level_info['required_xp']}"
-                    f"**"
+                    f"**{level_info['xp']} / "
+                    f"{level_info['required_xp']}**"
                 ),
                 inline=True
             )
@@ -1274,6 +1151,30 @@ class GeneralCog(commands.Cog):
                 ),
                 inline=False
             )
+
+            # ==================================================================
+            # V33 Weekly
+            # ==================================================================
+
+            rank_text = (
+                f"#{weekly_rank}"
+                if weekly_rank
+                else "順位なし"
+            )
+
+            embed.add_field(
+                name="🔥 今週XP",
+                value=f"**{weekly_xp} XP**",
+                inline=True
+            )
+
+            if Config.SHOW_WEEKLY_RANK_IN_PROFILE:
+
+                embed.add_field(
+                    name="🏆 週間順位",
+                    value=f"**{rank_text}**",
+                    inline=True
+                )
 
             embed.add_field(
                 name="💬 メッセージ",
@@ -1325,7 +1226,7 @@ class GeneralCog(commands.Cog):
             )
 
             embed.add_field(
-                name="🎖️ 称号数",
+                name="🎖️ 称号",
                 value=(
                     f"**{len(titles)} / "
                     f"{len(Config.TITLES)}**"
@@ -1335,14 +1236,19 @@ class GeneralCog(commands.Cog):
 
             embed.add_field(
                 name="最近の実績",
-                value=achievement_preview,
+                value=(
+                    "\n".join(
+                        preview_lines
+                    )
+                    or "まだ実績なし"
+                ),
                 inline=False
             )
 
             embed.set_footer(
                 text=(
-                    "/achievements /titles "
-                    "でも確認できるで"
+                    "/weekly /rankings "
+                    "でも順位を確認できるで"
                 )
             )
 
@@ -1364,7 +1270,7 @@ class GeneralCog(commands.Cog):
             )
 
     # ==========================================================================
-    # V32 Fortune
+    # Fortune
     # ==========================================================================
 
     @app_commands.command(
@@ -1379,8 +1285,7 @@ class GeneralCog(commands.Cog):
         if not interaction.guild:
 
             await interaction.response.send_message(
-                "この機能は"
-                "サーバー内専用やで。",
+                "この機能はサーバー内専用やで。",
                 ephemeral=True
             )
 
@@ -1392,29 +1297,15 @@ class GeneralCog(commands.Cog):
 
         try:
 
-            guild_id = (
-                interaction.guild.id
+            guild_id = interaction.guild.id
+            user_id = interaction.user.id
+
+            existing = await self.bot.db.get_today_fortune(
+                guild_id,
+                user_id
             )
 
-            user_id = (
-                interaction.user.id
-            )
-
-            existing = (
-                await self.bot.db
-                .get_today_fortune(
-                    guild_id,
-                    user_id
-                )
-            )
-
-            is_new = (
-                existing is None
-            )
-
-            # ==================================================================
-            # その日の結果を固定
-            # ==================================================================
+            is_new = existing is None
 
             if existing:
 
@@ -1435,7 +1326,7 @@ class GeneralCog(commands.Cog):
                     f"{guild_id}:"
                     f"{user_id}:"
                     f"{today}:"
-                    "akane-v32"
+                    "akane-v33"
                 )
 
                 digest = hashlib.sha256(
@@ -1444,13 +1335,11 @@ class GeneralCog(commands.Cog):
                     )
                 ).hexdigest()
 
-                seed = int(
-                    digest[:16],
-                    16
-                )
-
                 rng = random.Random(
-                    seed
+                    int(
+                        digest[:16],
+                        16
+                    )
                 )
 
                 score = rng.randint(
@@ -1459,40 +1348,17 @@ class GeneralCog(commands.Cog):
                 )
 
                 if score >= 96:
-
-                    fortune_key = (
-                        "super_lucky"
-                    )
-
+                    fortune_key = "super_lucky"
                 elif score >= 81:
-
-                    fortune_key = (
-                        "great_lucky"
-                    )
-
+                    fortune_key = "great_lucky"
                 elif score >= 61:
-
-                    fortune_key = (
-                        "lucky"
-                    )
-
+                    fortune_key = "lucky"
                 elif score >= 41:
-
-                    fortune_key = (
-                        "small_lucky"
-                    )
-
+                    fortune_key = "small_lucky"
                 elif score >= 21:
-
-                    fortune_key = (
-                        "neutral"
-                    )
-
+                    fortune_key = "neutral"
                 else:
-
-                    fortune_key = (
-                        "careful"
-                    )
+                    fortune_key = "careful"
 
                 await self.bot.db.save_today_fortune(
                     guild_id,
@@ -1506,124 +1372,49 @@ class GeneralCog(commands.Cog):
                     user_id
                 )
 
-            # ==================================================================
-            # Result
-            # ==================================================================
-
             fortunes = {
-                "super_lucky": {
-                    "name": "🌈 超大吉",
-                    "message": (
-                        "今日はかなりええ日になりそうや！"
-                        "思い切って動くんもアリやで。"
-                    ),
-                },
-
-                "great_lucky": {
-                    "name": "✨ 大吉",
-                    "message": (
-                        "ええ流れ来てるで！"
-                        "やりたかったことを"
-                        "進めるのに向いてそうや。"
-                    ),
-                },
-
-                "lucky": {
-                    "name": "🌸 吉",
-                    "message": (
-                        "なかなかええ感じやな。"
-                        "焦らず動けば"
-                        "良い結果につながりそうやで。"
-                    ),
-                },
-
-                "small_lucky": {
-                    "name": "🍀 小吉",
-                    "message": (
-                        "小さなラッキーが"
-                        "ありそうな日や。"
-                        "身近なことを大事にな。"
-                    ),
-                },
-
-                "neutral": {
-                    "name": "☕ 末吉",
-                    "message": (
-                        "今日は無理に勝負せんでもええ日や。"
-                        "普段通りが一番やで。"
-                    ),
-                },
-
-                "careful": {
-                    "name": "🌧️ 注意",
-                    "message": (
-                        "今日はちょっと慎重めがええかもな。"
-                        "忘れ物と勢い任せには注意やで。"
-                    ),
-                },
+                "super_lucky": (
+                    "🌈 超大吉",
+                    "今日はかなりええ日になりそうや！"
+                ),
+                "great_lucky": (
+                    "✨ 大吉",
+                    "ええ流れ来てるで！"
+                ),
+                "lucky": (
+                    "🌸 吉",
+                    "なかなかええ感じやな。"
+                ),
+                "small_lucky": (
+                    "🍀 小吉",
+                    "小さなラッキーがありそうや。"
+                ),
+                "neutral": (
+                    "☕ 末吉",
+                    "普段通りが一番やで。"
+                ),
+                "careful": (
+                    "🌧️ 注意",
+                    "今日は慎重めがええかもな。"
+                ),
             }
 
-            fortune_data = (
-                fortunes[
-                    fortune_key
-                ]
-            )
-
-            lucky_items = [
-                "コーヒー",
-                "チョコ",
-                "イヤホン",
-                "本",
-                "赤いもの",
-                "青いもの",
-                "温かい飲み物",
-                "お気に入りの曲",
-                "甘いもの",
-                "メモ帳",
-            ]
-
-            item_seed = (
-                score
-                + user_id
-                + interaction.guild.id
-            )
-
-            lucky_item = lucky_items[
-                item_seed
-                % len(
-                    lucky_items
-                )
+            fortune_name, fortune_message = fortunes[
+                fortune_key
             ]
 
             embed = discord.Embed(
-                title=(
-                    "🔮 今日の運勢"
-                ),
+                title="🔮 今日の運勢",
                 description=(
-                    f"## "
-                    f"{fortune_data['name']}\n\n"
-                    f"{fortune_data['message']}"
+                    f"## {fortune_name}\n\n"
+                    f"{fortune_message}"
                 ),
                 color=discord.Color.purple()
             )
 
             embed.add_field(
                 name="運勢スコア",
-                value=f"**{score} / 100**",
-                inline=True
-            )
-
-            embed.add_field(
-                name="ラッキーアイテム",
-                value=f"**{lucky_item}**",
-                inline=True
-            )
-
-            embed.set_footer(
-                text=(
-                    "今日中は何回見ても"
-                    "同じ結果やで"
-                )
+                value=f"**{score} / 100**"
             )
 
             await interaction.followup.send(
@@ -1631,18 +1422,11 @@ class GeneralCog(commands.Cog):
                 ephemeral=True
             )
 
-            # ==================================================================
-            # Unlock
-            # ==================================================================
-
             if is_new:
 
-                unlocks = (
-                    await self.bot.db
-                    .evaluate_progress_unlocks(
-                        guild_id,
-                        user_id
-                    )
+                unlocks = await self.bot.db.evaluate_progress_unlocks(
+                    guild_id,
+                    user_id
                 )
 
                 await self._send_unlock_notifications(
@@ -1657,13 +1441,12 @@ class GeneralCog(commands.Cog):
             )
 
             await interaction.followup.send(
-                "占い中に"
-                "エラーが起きたで。",
+                "占い中にエラーが起きたで。",
                 ephemeral=True
             )
 
     # ==========================================================================
-    # V32 Achievements
+    # Achievements
     # ==========================================================================
 
     @app_commands.command(
@@ -1678,16 +1461,6 @@ class GeneralCog(commands.Cog):
         ] = None
     ):
 
-        if not interaction.guild:
-
-            await interaction.response.send_message(
-                "この機能は"
-                "サーバー内専用やで。",
-                ephemeral=True
-            )
-
-            return
-
         target = (
             member
             or interaction.user
@@ -1695,38 +1468,30 @@ class GeneralCog(commands.Cog):
 
         try:
 
-            # 既存レベルなどもここで再評価
             await self.bot.db.evaluate_progress_unlocks(
                 interaction.guild.id,
                 target.id
             )
 
-            unlocked_rows = (
-                await self.bot.db
-                .get_user_achievements(
-                    interaction.guild.id,
-                    target.id
-                )
+            rows = await self.bot.db.get_user_achievements(
+                interaction.guild.id,
+                target.id
             )
 
-            unlocked_keys = {
+            unlocked = {
                 row[0]
-                for row in unlocked_rows
+                for row in rows
             }
 
             lines = []
 
-            for key, data in (
-                Config.ACHIEVEMENTS.items()
-            ):
+            for key, data in Config.ACHIEVEMENTS.items():
 
-                if key in unlocked_keys:
-
-                    mark = "✅"
-
-                else:
-
-                    mark = "🔒"
+                mark = (
+                    "✅"
+                    if key in unlocked
+                    else "🔒"
+                )
 
                 lines.append(
                     f"{mark} "
@@ -1735,28 +1500,18 @@ class GeneralCog(commands.Cog):
                     f"　{data['description']}"
                 )
 
-            embed = discord.Embed(
-                title=(
-                    f"🏆 "
-                    f"{target.display_name}"
-                    " の実績"
-                ),
-                description="\n\n".join(
-                    lines
-                ),
-                color=discord.Color.gold()
-            )
-
-            embed.set_footer(
-                text=(
-                    f"{len(unlocked_keys)} / "
-                    f"{len(Config.ACHIEVEMENTS)} "
-                    "解除"
-                )
-            )
-
             await interaction.response.send_message(
-                embed=embed,
+                embed=discord.Embed(
+                    title=(
+                        f"🏆 "
+                        f"{target.display_name}"
+                        " の実績"
+                    ),
+                    description="\n\n".join(
+                        lines
+                    ),
+                    color=discord.Color.gold()
+                ),
                 ephemeral=True
             )
 
@@ -1767,13 +1522,12 @@ class GeneralCog(commands.Cog):
             )
 
             await interaction.response.send_message(
-                "実績一覧を"
-                "取得できへんかったわ。",
+                "実績一覧を取得できへんかったわ。",
                 ephemeral=True
             )
 
     # ==========================================================================
-    # V32 Titles
+    # Titles
     # ==========================================================================
 
     @app_commands.command(
@@ -1785,44 +1539,22 @@ class GeneralCog(commands.Cog):
         interaction: discord.Interaction
     ):
 
-        if not interaction.guild:
-
-            await interaction.response.send_message(
-                "この機能は"
-                "サーバー内専用やで。",
-                ephemeral=True
-            )
-
-            return
-
         try:
 
-            guild_id = (
-                interaction.guild.id
-            )
-
-            user_id = (
+            await self.bot.db.evaluate_progress_unlocks(
+                interaction.guild.id,
                 interaction.user.id
             )
 
-            await self.bot.db.evaluate_progress_unlocks(
-                guild_id,
-                user_id
-            )
-
-            rows = (
-                await self.bot.db
-                .get_user_titles(
-                    guild_id,
-                    user_id
-                )
+            rows = await self.bot.db.get_user_titles(
+                interaction.guild.id,
+                interaction.user.id
             )
 
             if not rows:
 
                 await interaction.response.send_message(
-                    "まだ称号を"
-                    "持ってへんみたいや。",
+                    "まだ称号を持ってへんで。",
                     ephemeral=True
                 )
 
@@ -1836,16 +1568,15 @@ class GeneralCog(commands.Cog):
                 unlocked_at
             ) in rows:
 
-                data = (
-                    Config.TITLES.get(
-                        title_key
-                    )
+                data = Config.TITLES.get(
+                    title_key
                 )
 
                 if not data:
+
                     continue
 
-                equipped_text = (
+                marker = (
                     " 👈 **装備中**"
                     if equipped
                     else ""
@@ -1854,27 +1585,18 @@ class GeneralCog(commands.Cog):
                 lines.append(
                     f"`{title_key}` "
                     f"{data['name']}"
-                    f"{equipped_text}\n"
+                    f"{marker}\n"
                     f"　{data['description']}"
                 )
 
-            embed = discord.Embed(
-                title="🎖️ 獲得済み称号",
-                description="\n\n".join(
-                    lines
-                ),
-                color=discord.Color.blurple()
-            )
-
-            embed.set_footer(
-                text=(
-                    "/title_set で"
-                    "プロフィール表示称号を変更"
-                )
-            )
-
             await interaction.response.send_message(
-                embed=embed,
+                embed=discord.Embed(
+                    title="🎖️ 獲得済み称号",
+                    description="\n\n".join(
+                        lines
+                    ),
+                    color=discord.Color.blurple()
+                ),
                 ephemeral=True
             )
 
@@ -1885,40 +1607,23 @@ class GeneralCog(commands.Cog):
             )
 
             await interaction.response.send_message(
-                "称号一覧を"
-                "取得できへんかったわ。",
+                "称号一覧を取得できへんかったわ。",
                 ephemeral=True
             )
 
     # ==========================================================================
-    # V32 Title Set
+    # Title Set
     # ==========================================================================
 
     @app_commands.command(
         name="title_set",
-        description="プロフィールに表示する称号を変更"
-    )
-    @app_commands.describe(
-        title_key=(
-            "/titles に表示される"
-            "英数字のキー"
-        )
+        description="プロフィールの称号を変更"
     )
     async def title_set(
         self,
         interaction: discord.Interaction,
         title_key: str
     ):
-
-        if not interaction.guild:
-
-            await interaction.response.send_message(
-                "この機能は"
-                "サーバー内専用やで。",
-                ephemeral=True
-            )
-
-            return
 
         title_key = (
             title_key
@@ -1928,34 +1633,23 @@ class GeneralCog(commands.Cog):
 
         try:
 
-            if (
-                title_key
-                not in Config.TITLES
-            ):
+            if title_key not in Config.TITLES:
 
                 await interaction.response.send_message(
-                    "その称号キーは"
-                    "存在せえへんで。\n"
-                    "`/titles` で確認してな。",
+                    "その称号キーは存在せえへんで。",
                     ephemeral=True
                 )
 
                 return
 
-            has_title = (
-                await self.bot.db
-                .has_title(
-                    interaction.guild.id,
-                    interaction.user.id,
-                    title_key
-                )
-            )
-
-            if not has_title:
+            if not await self.bot.db.has_title(
+                interaction.guild.id,
+                interaction.user.id,
+                title_key
+            ):
 
                 await interaction.response.send_message(
-                    "その称号は"
-                    "まだ獲得してへんで。",
+                    "その称号はまだ持ってへんで。",
                     ephemeral=True
                 )
 
@@ -1967,16 +1661,12 @@ class GeneralCog(commands.Cog):
                 title_key
             )
 
-            data = (
-                Config.TITLES[
-                    title_key
-                ]
-            )
-
             await interaction.response.send_message(
-                f"🎖️ 表示称号を "
-                f"**{data['name']}** "
-                "に変更したで！",
+                (
+                    "🎖️ 表示称号を "
+                    f"**{Config.TITLES[title_key]['name']}** "
+                    "に変更したで！"
+                ),
                 ephemeral=True
             )
 
@@ -1992,13 +1682,265 @@ class GeneralCog(commands.Cog):
                 ephemeral=True
             )
 
+    # ==========================================================================
+    # V33 Weekly
+    # ==========================================================================
+
+    @app_commands.command(
+        name="weekly",
+        description="今週のXPランキング"
+    )
+    async def weekly(
+        self,
+        interaction: discord.Interaction
+    ):
+
+        if not interaction.guild:
+
+            await interaction.response.send_message(
+                "サーバー内専用やで。",
+                ephemeral=True
+            )
+
+            return
+
+        try:
+
+            rows = await self.bot.db.get_weekly_xp_leaderboard(
+                interaction.guild.id,
+                Config.RANKING_LIMIT
+            )
+
+            week_key = self.bot.db.current_week_key()
+
+            lines = []
+
+            for position, (
+                user_id,
+                xp
+            ) in enumerate(
+                rows,
+                1
+            ):
+
+                name = self._member_name(
+                    interaction.guild,
+                    user_id
+                )
+
+                lines.append(
+                    f"{self._ranking_medal(position)} "
+                    f"**{name}** — "
+                    f"**{xp} XP**"
+                )
+
+            user_xp = await self.bot.db.get_user_weekly_xp(
+                interaction.guild.id,
+                interaction.user.id
+            )
+
+            user_rank = await self.bot.db.get_weekly_rank(
+                interaction.guild.id,
+                interaction.user.id
+            )
+
+            embed = discord.Embed(
+                title="🔥 今週のXPランキング",
+                description=(
+                    "\n".join(
+                        lines
+                    )
+                    or "まだ週間XPデータがないで。"
+                ),
+                color=discord.Color.orange()
+            )
+
+            embed.add_field(
+                name="あなた",
+                value=(
+                    f"XP: **{user_xp}**\n"
+                    f"順位: "
+                    f"**"
+                    f"{('#' + str(user_rank)) if user_rank else '順位なし'}"
+                    f"**"
+                ),
+                inline=False
+            )
+
+            embed.set_footer(
+                text=(
+                    f"{week_key} / "
+                    "JST・月曜〜日曜"
+                )
+            )
+
+            await interaction.response.send_message(
+                embed=embed
+            )
+
+        except Exception as e:
+
+            logger.exception(
+                f"/weekly failed: {e}"
+            )
+
+            await interaction.response.send_message(
+                "週間ランキング取得中に"
+                "エラーが起きたで。",
+                ephemeral=True
+            )
+
+    # ==========================================================================
+    # V33 Rankings
+    # ==========================================================================
+
+    @app_commands.command(
+        name="rankings",
+        description="サーバー内ランキング"
+    )
+    @app_commands.choices(
+        category=[
+            app_commands.Choice(
+                name="🔥 週間XP",
+                value="weekly"
+            ),
+            app_commands.Choice(
+                name="💬 発言数",
+                value="messages"
+            ),
+            app_commands.Choice(
+                name="🤖 AI会話",
+                value="ai"
+            ),
+            app_commands.Choice(
+                name="🏆 実績数",
+                value="achievements"
+            ),
+        ]
+    )
+    async def rankings(
+        self,
+        interaction: discord.Interaction,
+        category: app_commands.Choice[str]
+    ):
+
+        if not interaction.guild:
+
+            await interaction.response.send_message(
+                "サーバー内専用やで。",
+                ephemeral=True
+            )
+
+            return
+
+        try:
+
+            if category.value == "weekly":
+
+                rows = await self.bot.db.get_weekly_xp_leaderboard(
+                    interaction.guild.id,
+                    Config.RANKING_LIMIT
+                )
+
+                title = "🔥 週間XPランキング"
+                suffix = "XP"
+
+            elif category.value == "messages":
+
+                rows = await self.bot.db.get_message_leaderboard(
+                    interaction.guild.id,
+                    Config.RANKING_LIMIT
+                )
+
+                title = "💬 発言数ランキング"
+                suffix = "発言"
+
+            elif category.value == "ai":
+
+                rows = await self.bot.db.get_ai_leaderboard(
+                    interaction.guild.id,
+                    Config.RANKING_LIMIT
+                )
+
+                title = "🤖 AI会話ランキング"
+                suffix = "回"
+
+            else:
+
+                rows = await self.bot.db.get_achievement_leaderboard(
+                    interaction.guild.id,
+                    Config.RANKING_LIMIT
+                )
+
+                title = "🏆 実績ランキング"
+                suffix = "個"
+
+            lines = []
+
+            for position, (
+                user_id,
+                value
+            ) in enumerate(
+                rows,
+                1
+            ):
+
+                name = self._member_name(
+                    interaction.guild,
+                    user_id
+                )
+
+                lines.append(
+                    f"{self._ranking_medal(position)} "
+                    f"**{name}** — "
+                    f"**{value} {suffix}**"
+                )
+
+            embed = discord.Embed(
+                title=title,
+                description=(
+                    "\n".join(
+                        lines
+                    )
+                    or "まだデータがないで。"
+                ),
+                color=discord.Color.gold()
+            )
+
+            embed.set_footer(
+                text=(
+                    f"TOP {Config.RANKING_LIMIT} "
+                    "・このサーバー内のみ"
+                )
+            )
+
+            await interaction.response.send_message(
+                embed=embed
+            )
+
+        except Exception as e:
+
+            logger.exception(
+                f"/rankings failed: {e}"
+            )
+
+            await interaction.response.send_message(
+                "ランキング取得中に"
+                "エラーが起きたで。",
+                ephemeral=True
+            )
+
 
 # ==============================================================================
 # Cog Setup
 # ==============================================================================
 
-async def setup(bot):
+async def setup(
+    bot
+):
 
     await bot.add_cog(
-        GeneralCog(bot)
+        GeneralCog(
+            bot
+        )
     )
