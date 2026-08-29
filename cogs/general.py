@@ -653,6 +653,153 @@ class GeneralCog(commands.Cog):
                 ephemeral=True
             )
 
+    # ==========================================================================
+    # v29 Memory Status
+    # ==========================================================================
+
+    @app_commands.command(
+        name="memory",
+        description="茜が覚えている会話履歴を確認"
+    )
+    async def memory(
+        self,
+        interaction: discord.Interaction
+    ):
+
+        if not interaction.guild:
+
+            await interaction.response.send_message(
+                "この機能はサーバー内専用やで。",
+                ephemeral=True
+            )
+
+            return
+
+        try:
+
+            count = (
+                await self.bot.db
+                .count_conversation_history(
+                    guild_id=interaction.guild.id,
+                    channel_id=interaction.channel.id,
+                    user_id=interaction.user.id
+                )
+            )
+
+            active_count = min(
+                count,
+                Config.MEMORY_MESSAGE_LIMIT
+            )
+
+            embed = discord.Embed(
+                title="🧠 茜の会話メモリー",
+                description=(
+                    f"このチャンネルで保存されてる履歴: "
+                    f"**{count}件**\n"
+                    f"次の会話で参照する最大履歴: "
+                    f"**{active_count}件**\n"
+                    f"保存期間: "
+                    f"**{Config.MEMORY_RETENTION_DAYS}日**"
+                ),
+                color=discord.Color.purple()
+            )
+
+            embed.set_footer(
+                text=(
+                    "/forget で自分の履歴を消せるで"
+                )
+            )
+
+            await interaction.response.send_message(
+                embed=embed,
+                ephemeral=True
+            )
+
+        except Exception as e:
+
+            logger.exception(
+                f"/memory failed: {e}"
+            )
+
+            await interaction.response.send_message(
+                "記憶情報を確認できへんかったわ。",
+                ephemeral=True
+            )
+
+    # ==========================================================================
+    # v29 Forget
+    # ==========================================================================
+
+    @app_commands.command(
+        name="forget",
+        description="茜が覚えている自分の会話履歴を削除"
+    )
+    @app_commands.describe(
+        all_channels=(
+            "このサーバー内の全チャンネルの"
+            "履歴を消すか"
+        )
+    )
+    async def forget(
+        self,
+        interaction: discord.Interaction,
+        all_channels: bool = False
+    ):
+
+        if not interaction.guild:
+
+            await interaction.response.send_message(
+                "この機能はサーバー内専用やで。",
+                ephemeral=True
+            )
+
+            return
+
+        try:
+
+            if all_channels:
+
+                deleted = (
+                    await self.bot.db
+                    .clear_all_user_history(
+                        guild_id=interaction.guild.id,
+                        user_id=interaction.user.id
+                    )
+                )
+
+                await interaction.response.send_message(
+                    f"🧹 このサーバーで覚えてた"
+                    f"会話履歴を **{deleted}件** 消したで！",
+                    ephemeral=True
+                )
+
+            else:
+
+                deleted = (
+                    await self.bot.db
+                    .clear_conversation_history(
+                        guild_id=interaction.guild.id,
+                        channel_id=interaction.channel.id,
+                        user_id=interaction.user.id
+                    )
+                )
+
+                await interaction.response.send_message(
+                    f"🧹 このチャンネルで覚えてた"
+                    f"会話履歴を **{deleted}件** 消したで！",
+                    ephemeral=True
+                )
+
+        except Exception as e:
+
+            logger.exception(
+                f"/forget failed: {e}"
+            )
+
+            await interaction.response.send_message(
+                "履歴削除中にエラーが起きたで。",
+                ephemeral=True
+            )
 
 async def setup(bot):
 
