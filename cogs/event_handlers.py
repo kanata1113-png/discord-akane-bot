@@ -3,12 +3,12 @@ import logging
 import re
 
 from collections import defaultdict, deque
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 
-from config import Config, JST
+from config import Config
 
 
 logger = logging.getLogger(
@@ -44,30 +44,6 @@ class EventsCog(commands.Cog):
         self.spam_strikes = {}
 
         self.xp_last_award = {}
-
-    # ==========================================================================
-    # Lifecycle
-    # ==========================================================================
-
-    async def cog_load(
-        self
-    ):
-
-        self.loop_reminders.start()
-        self.loop_monthly.start()
-        self.loop_memory_cleanup.start()
-
-        logger.info(
-            "EventsCog background tasks started."
-        )
-
-    def cog_unload(
-        self
-    ):
-
-        self.loop_reminders.cancel()
-        self.loop_monthly.cancel()
-        self.loop_memory_cleanup.cancel()
 
     # ==========================================================================
     # Unlock Notification
@@ -257,205 +233,6 @@ class EventsCog(commands.Cog):
             logger.exception(
                 f"Spam timeout failed: {e}"
             )
-
-    # ==========================================================================
-    # Reminder
-    # ==========================================================================
-
-    @tasks.loop(
-        seconds=60
-    )
-    async def loop_reminders(
-        self
-    ):
-
-        try:
-
-            now_str = datetime.now(
-                JST
-            ).isoformat()
-
-            rows = await self.bot.db._fetchall(
-                """
-                SELECT
-                    id,
-                    user_id,
-                    channel_id,
-                    message
-                FROM reminders
-                WHERE end_time <= ?
-                """,
-                (
-                    now_str,
-                )
-            )
-
-            if not rows:
-
-                return
-
-            ids = [
-                row[0]
-                for row in rows
-            ]
-
-            placeholders = ",".join(
-                "?"
-                for _ in ids
-            )
-
-            await self.bot.db._execute(
-                f"""
-                DELETE FROM reminders
-                WHERE id IN ({placeholders})
-                """,
-                ids
-            )
-
-            for (
-                reminder_id,
-                user_id,
-                channel_id,
-                reminder_message
-            ) in rows:
-
-                channel = self.bot.get_channel(
-                    channel_id
-                )
-
-                if channel:
-
-                    try:
-
-                        await channel.send(
-                            f"⏰ <@{user_id}> "
-                            f"リマインダー: "
-                            f"{reminder_message}"
-                        )
-
-                    except Exception as e:
-
-                        logger.exception(
-                            f"Reminder send failed: {e}"
-                        )
-
-        except Exception as e:
-
-            logger.exception(
-                f"Reminder loop failed: {e}"
-            )
-
-    @loop_reminders.before_loop
-    async def before_loop_reminders(
-        self
-    ):
-
-        await self.bot.wait_until_ready()
-
-    # ==========================================================================
-    # Monthly
-    # ==========================================================================
-
-    @tasks.loop(
-        time=time(
-            hour=7,
-            minute=0,
-            tzinfo=JST
-        )
-    )
-    async def loop_monthly(
-        self
-    ):
-
-        if datetime.now(
-            JST
-        ).day != 1:
-
-            return
-
-        try:
-
-            rows = await self.bot.db._fetchall(
-                """
-                SELECT
-                    rule_ch,
-                    target_ch
-                FROM monthly_rules
-                """
-            )
-
-            for (
-                rule_id,
-                target_id
-            ) in rows:
-
-                channel = self.bot.get_channel(
-                    target_id
-                )
-
-                if channel:
-
-                    await channel.send(
-                        "表現の自由界隈のみなさん、"
-                        "おはよーさん！☀️ "
-                        "新しい一ヶ月が始まったで〜！🚀\n"
-                        f"📌 **ルールブック:** "
-                        f"<#{rule_id}>\n"
-                        "目を通しておいてな！"
-                    )
-
-        except Exception as e:
-
-            logger.exception(
-                f"Monthly loop failed: {e}"
-            )
-
-    @loop_monthly.before_loop
-    async def before_loop_monthly(
-        self
-    ):
-
-        await self.bot.wait_until_ready()
-
-    # ==========================================================================
-    # Memory Cleanup
-    # ==========================================================================
-
-    @tasks.loop(
-        time=time(
-            hour=4,
-            minute=0,
-            tzinfo=JST
-        )
-    )
-    async def loop_memory_cleanup(
-        self
-    ):
-
-        try:
-
-            deleted = await self.bot.db.cleanup_old_conversations(
-                Config.MEMORY_RETENTION_DAYS
-            )
-
-            if deleted:
-
-                logger.info(
-                    f"Memory cleanup: {deleted}"
-                )
-
-        except Exception as e:
-
-            logger.exception(
-                f"Memory cleanup failed: {e}"
-            )
-
-    @loop_memory_cleanup.before_loop
-    async def before_memory_cleanup(
-        self
-    ):
-
-        await self.bot.wait_until_ready()
 
     # ==========================================================================
     # Message

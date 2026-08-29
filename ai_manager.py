@@ -154,6 +154,23 @@ DiscordサーバーのマスコットAIです。
             "normal-chat"
         )
 
+    @staticmethod
+    def select_chat_max_tokens(
+        route: str
+    ) -> int:
+
+        if route == "deep-reasoning":
+            return Config.DEEP_REASONING_MAX_TOKENS
+
+        if route in {
+            "regulation",
+            "reasoning",
+            "long-question",
+        }:
+            return Config.REASONING_MAX_TOKENS
+
+        return Config.NORMAL_CHAT_MAX_TOKENS
+
     # ==========================================================================
     # Responses API
     # ==========================================================================
@@ -245,9 +262,42 @@ DiscordサーバーのマスコットAIです。
                 response.output_text
                 if response.output_text
                 else ""
+            ).strip()
+
+            status = getattr(
+                response,
+                "status",
+                None
+            )
+            incomplete_details = getattr(
+                response,
+                "incomplete_details",
+                None
+            )
+            incomplete_reason = getattr(
+                incomplete_details,
+                "reason",
+                None
             )
 
-            return text.strip()
+            if status == "incomplete":
+                logger.warning(
+                    "AI response incomplete | "
+                    f"model={model} | "
+                    f"effort={reasoning_effort} | "
+                    f"reason={incomplete_reason} | "
+                    f"max_output_tokens={max_tokens}"
+                )
+
+                if incomplete_reason == "max_output_tokens":
+                    if text:
+                        return (
+                            f"{text}\n\n"
+                            f"{Config.INCOMPLETE_OUTPUT_MSG}"
+                        )
+                    return Config.INCOMPLETE_OUTPUT_MSG
+
+            return text
 
         except asyncio.TimeoutError:
 
@@ -306,11 +356,16 @@ DiscordサーバーのマスコットAIです。
             f"発言:\n{content}"
         )
 
+        max_tokens = self.select_chat_max_tokens(
+            route
+        )
+
         logger.info(
             "AI route selected | "
             f"route={route} | "
             f"model={model} | "
             f"effort={reasoning_effort} | "
+            f"max_output_tokens={max_tokens} | "
             f"history="
             f"{len(history) if history else 0}"
         )
@@ -319,7 +374,7 @@ DiscordサーバーのマスコットAIです。
             system=system_prompt,
             user=user_prompt,
             model=model,
-            max_tokens=Config.NORMAL_CHAT_MAX_TOKENS,
+            max_tokens=max_tokens,
             history=history,
             reasoning_effort=reasoning_effort
         )
