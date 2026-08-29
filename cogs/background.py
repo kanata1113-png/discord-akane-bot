@@ -72,8 +72,8 @@ class BackgroundTasksCog(commands.Cog):
                         "表現の自由界隈のみなさん、"
                         "おはよーさん！☀️ "
                         "新しい一ヶ月が始まったで〜！🚀\n"
-                        f"📌 **ルールブック:** <#{rule_id}>\n"
-                        "目を通しておいてな！"
+                        "📌 **ルールブック:** <#{rule_id}>\n"
+                        "みんなが快適に過ごすための大事なお約束やから、まだの人はちゃんと目を通しておいてな！"
                     )
 
         except Exception as error:
