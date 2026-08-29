@@ -1,85 +1,161 @@
 import asyncio
 import logging
-import openai
+
+from openai import AsyncOpenAI
 
 from config import Config
 
 
-logger = logging.getLogger("AkaneBot")
-
-
-if Config.OPENAI_API_KEY:
-
-    openai_client = openai.OpenAI(
-        api_key=Config.OPENAI_API_KEY,
-        timeout=60.0
-    )
-
-else:
-
-    openai_client = None
-
-    logger.warning(
-        "OpenAI API Key is missing."
-    )
+logger = logging.getLogger(
+    "AkaneBot"
+)
 
 
 class AiManager:
 
-    def __init__(self):
+    def __init__(
+        self
+    ):
 
-        self.model = Config.CHAT_MODEL
+        self.client = AsyncOpenAI(
+            api_key=Config.OPENAI_API_KEY
+        )
 
     # ==========================================================================
-    # Model Router
+    # System Prompt
+    # ==========================================================================
+
+    @staticmethod
+    def get_system_prompt(
+        regulation_mode: bool = False
+    ) -> str:
+
+        base_prompt = """
+あなたは「表自派茜（ひょうじは あかね）」という
+DiscordサーバーのマスコットAIです。
+
+【キャラクター】
+・元気で親しみやすい女子高生風
+・関西弁で話す
+・一人称は「茜」
+・ユーザーとの会話を楽しむ
+・堅苦しすぎず、分かりやすく説明する
+・必要な場合は箇条書きや見出しを使って整理する
+
+【重要】
+事実と意見を区別してください。
+不確かな内容は断定せず、その旨を明示してください。
+ユーザーの意見に無条件に同意する必要はありません。
+"""
+
+        if regulation_mode:
+
+            base_prompt += """
+
+【表現の自由・規制関連】
+茜は表現の自由、検閲、表現規制、言論の自由などの
+話題には特に強い関心を持っています。
+
+ただし、
+・事実
+・法制度
+・一般的な評価
+・茜自身のキャラクターとしての意見
+
+をできるだけ区別して説明してください。
+
+特定の立場へ無条件に同調するのではなく、
+必要に応じて反対意見や別の論点も示してください。
+"""
+
+        return base_prompt.strip()
+
+    # ==========================================================================
+    # Model Routing - V34
     # ==========================================================================
 
     def select_chat_model(
         self,
         content: str
-    ) -> tuple[str, str]:
+    ) -> tuple[str, str, str]:
 
-        text = content.lower()
+        text = (
+            content
+            or ""
+        ).strip()
 
-        # 表現規制系は高性能モデル
+        # ======================================================================
+        # Deep Reasoning
+        # ======================================================================
+
         if any(
-            keyword in content
+            keyword in text
+            for keyword
+            in Config.DEEP_REASONING_KEYWORDS
+        ):
+
+            return (
+                Config.REASONING_MODEL,
+                Config.DEEP_REASONING_EFFORT,
+                "deep-reasoning"
+            )
+
+        # ======================================================================
+        # Regulation
+        # ======================================================================
+
+        if any(
+            keyword in text
             for keyword
             in Config.REGULATION_KEYWORDS
         ):
 
             return (
                 Config.REASONING_MODEL,
+                Config.REASONING_EFFORT,
                 "regulation"
             )
 
-        # 法律・分析・比較など
+        # ======================================================================
+        # General Reasoning
+        # ======================================================================
+
         if any(
-            keyword.lower() in text
+            keyword in text
             for keyword
             in Config.REASONING_KEYWORDS
         ):
 
             return (
                 Config.REASONING_MODEL,
+                Config.REASONING_EFFORT,
                 "reasoning"
             )
 
-        # 長文質問は複雑な可能性が高い
-        if len(content) >= 350:
+        # ======================================================================
+        # Long Question
+        # ======================================================================
+
+        if len(text) >= 350:
 
             return (
                 Config.REASONING_MODEL,
+                Config.REASONING_EFFORT,
                 "long-question"
             )
 
+        # ======================================================================
+        # Normal Chat
+        # ======================================================================
+
         return (
             Config.CHAT_MODEL,
+            Config.CHAT_REASONING_EFFORT,
             "normal-chat"
         )
 
     # ==========================================================================
-    # OpenAI
+    # Responses API
     # ==========================================================================
 
     async def call_gpt(
@@ -87,32 +163,28 @@ class AiManager:
         system: str,
         user: str,
         model: str,
-        max_tokens: int = 1000,
-        history: list[dict] | None = None
+        max_tokens: int,
+        history=None,
+        reasoning_effort: str = "low"
     ) -> str:
 
-        if not openai_client:
+        input_messages = []
 
-            return (
-                "APIキーが設定されてへんで！"
-            )
+        # ======================================================================
+        # System
+        # ======================================================================
 
-        model_lower = model.lower()
-
-        is_reasoning = (
-            "gpt-5" in model_lower
-            or "o1" in model_lower
-            or "o3" in model_lower
-        )
-
-        messages = [
+        input_messages.append(
             {
                 "role": "system",
-                "content": system
+                "content": system,
             }
-        ]
+        )
 
-        # 過去会話をsystemと今回のuserの間に入れる
+        # ======================================================================
+        # History
+        # ======================================================================
+
         if history:
 
             for item in history:
@@ -122,101 +194,79 @@ class AiManager:
                 )
 
                 content = item.get(
-                    "content"
+                    "content",
+                    ""
                 )
 
                 if (
-                    role in {
+                    role
+                    not in {
                         "user",
-                        "assistant"
+                        "assistant",
                     }
-                    and content
+                    or not content
                 ):
 
-                    messages.append(
-                        {
-                            "role": role,
-                            "content": content
-                        }
-                    )
+                    continue
 
-        messages.append(
+                input_messages.append(
+                    {
+                        "role": role,
+                        "content": content,
+                    }
+                )
+
+        # ======================================================================
+        # Current User
+        # ======================================================================
+
+        input_messages.append(
             {
                 "role": "user",
-                "content": user
+                "content": user,
             }
         )
 
         try:
 
-            params = {
-                "model": model,
-                "messages": messages
-            }
-
-            if is_reasoning:
-
-                params[
-                    "max_completion_tokens"
-                ] = max_tokens
-
-                params[
-                    "reasoning_effort"
-                ] = "medium"
-
-            else:
-
-                params[
-                    "max_tokens"
-                ] = max_tokens
-
-                params[
-                    "temperature"
-                ] = 0.7
-
-            loop = asyncio.get_running_loop()
-
-            response = await loop.run_in_executor(
-                None,
-                lambda: (
-                    openai_client
-                    .chat
-                    .completions
-                    .create(
-                        **params
-                    )
-                )
+            response = await asyncio.wait_for(
+                self.client.responses.create(
+                    model=model,
+                    input=input_messages,
+                    reasoning={
+                        "effort": reasoning_effort,
+                    },
+                    max_output_tokens=max_tokens,
+                ),
+                timeout=90
             )
 
-            content = (
-                response
-                .choices[0]
-                .message
-                .content
+            text = (
+                response.output_text
+                if response.output_text
+                else ""
             )
 
-            if (
-                content is None
-                or not content.strip()
-            ):
+            return text.strip()
 
-                return Config.EMPTY_MSG
+        except asyncio.TimeoutError:
 
-            return content.strip()
+            logger.warning(
+                "OpenAI timeout | "
+                f"model={model} | "
+                f"effort={reasoning_effort}"
+            )
+
+            return Config.TIMEOUT_MSG
 
         except Exception as e:
 
             logger.exception(
-                f"AI Error "
-                f"(model={model}): {e}"
+                "OpenAI API error | "
+                f"model={model} | "
+                f"effort={reasoning_effort} | "
+                f"error={e}"
             )
-
-            if (
-                "timed out"
-                in str(e).lower()
-            ):
-
-                return Config.TIMEOUT_MSG
 
             return Config.ERROR_MSG
 
@@ -228,75 +278,50 @@ class AiManager:
         self,
         user_name: str,
         content: str,
-        history: list[dict] | None = None
-    ) -> tuple[str, str, str]:
+        history=None
+    ):
 
-        model, route = self.select_chat_model(
+        (
+            model,
+            reasoning_effort,
+            route
+        ) = self.select_chat_model(
             content
         )
 
-        is_regulation = any(
+        regulation_mode = any(
             keyword in content
             for keyword
             in Config.REGULATION_KEYWORDS
         )
 
-        if is_regulation:
-
-            style = (
-                "今は表現の自由・表現規制に関する話題です。"
-                "関心を強く持ちながら話してください。"
-                "ただし、事実と意見を区別し、"
-                "ユーザーへ無条件に同意する必要はありません。"
+        system_prompt = (
+            self.get_system_prompt(
+                regulation_mode=regulation_mode
             )
+        )
 
-        else:
-
-            style = (
-                "親しみやすく、友達のような"
-                "自然な関西弁で振る舞ってください。"
-            )
-
-        system = (
-            "あなたは「表自派茜（ひょうじは あかね）」という"
-            "元気な関西弁の女子高生AIです。\n"
-
-            "一人称は「茜」。\n"
-
-            f"現在話しているユーザー名は"
-            f"「{user_name}」です。\n"
-
-            f"{style}\n"
-
-            "【会話について】\n"
-            "過去の会話履歴が与えられている場合は、"
-            "必要に応じて自然に参照してください。\n"
-            "履歴に存在しない事実を"
-            "『覚えている』と捏造してはいけません。\n"
-
-            "【ルール】\n"
-            "1. 日本語・自然な関西弁で話す。\n"
-            "2. 回答は原則1000文字以内。\n"
-            "3. 分からないことを知っているふりをしない。\n"
-            "4. ユーザーの主張に無条件に同意しない。\n"
-            "5. 事実と意見を可能な範囲で区別する。\n"
-            "6. 会話履歴は会話を自然につなげる目的で使う。"
+        user_prompt = (
+            f"ユーザー名: {user_name}\n"
+            f"発言:\n{content}"
         )
 
         logger.info(
-            "AI route | "
-            f"user={user_name} | "
-            f"model={model} | "
+            "AI route selected | "
             f"route={route} | "
-            f"history={len(history or [])}"
+            f"model={model} | "
+            f"effort={reasoning_effort} | "
+            f"history="
+            f"{len(history) if history else 0}"
         )
 
         reply = await self.call_gpt(
-            system=system,
-            user=content,
+            system=system_prompt,
+            user=user_prompt,
             model=model,
             max_tokens=Config.NORMAL_CHAT_MAX_TOKENS,
-            history=history
+            history=history,
+            reasoning_effort=reasoning_effort
         )
 
         return (
@@ -306,86 +331,115 @@ class AiManager:
         )
 
     # ==========================================================================
-    # Translation
+    # Translate
     # ==========================================================================
 
     async def translate(
         self,
         text: str,
-        target_lang: str
+        target_language: str
     ) -> str:
 
+        system = """
+あなたは高品質な翻訳AIです。
+
+翻訳のみを行ってください。
+原文の意味・ニュアンス・口調を可能な限り維持してください。
+余計な解説は不要です。
+""".strip()
+
+        user = (
+            f"次の文章を "
+            f"{target_language} "
+            f"へ翻訳してください。\n\n"
+            f"{text}"
+        )
+
         return await self.call_gpt(
-            system=(
-                f"Translate to {target_lang}. "
-                "Output ONLY the translated text."
-            ),
-            user=text,
+            system=system,
+            user=user,
             model=Config.FAST_MODEL,
-            max_tokens=1000
+            max_tokens=1500,
+            reasoning_effort=(
+                Config.FAST_REASONING_EFFORT
+            )
         )
 
     # ==========================================================================
-    # Dictionary
+    # Define Word
     # ==========================================================================
 
     async def define_word(
         self,
         word: str,
-        wiki_mode: bool
+        wiki_mode: bool = False
     ) -> str:
 
         if wiki_mode:
 
-            system = (
-                "あなたはWikipedia風の"
-                "要約アシスタントです。"
-                f"「{word}」について、"
-                "客観的な事実を中心に"
-                "400文字以内で簡潔に説明してください。"
-                "実際にWikipediaを閲覧したと"
-                "偽ってはいけません。"
-            )
+            system = """
+あなたは簡潔で正確な百科事典風AIです。
+
+入力された単語・人物・概念について、
+概要、意味、背景、重要な点を分かりやすく説明してください。
+事実と推測は区別してください。
+""".strip()
 
         else:
 
-            system = (
-                "あなたは高性能な辞書です。"
-                f"「{word}」という言葉の意味を、"
-                "400文字以内で分かりやすく"
-                "解説してください。"
-            )
+            system = """
+あなたは分かりやすい辞書AIです。
 
-        system += (
-            "\n必ず文章を完結させてください。"
-        )
+入力された単語について、
+意味、使い方、必要なら簡単な例を説明してください。
+簡潔に答えてください。
+""".strip()
 
         return await self.call_gpt(
             system=system,
             user=word,
             model=Config.FAST_MODEL,
-            max_tokens=1000
+            max_tokens=1000,
+            reasoning_effort=(
+                Config.FAST_REASONING_EFFORT
+            )
         )
 
     # ==========================================================================
-    # Summary
+    # Summarize
     # ==========================================================================
 
     async def summarize(
         self,
-        text_list: list[str]
+        messages
     ) -> str:
 
+        joined = "\n".join(
+            f"- {message}"
+            for message in messages
+        )
+
+        system = """
+あなたは会話要約AIです。
+
+入力された発言を読み、
+重要な内容を短く分かりやすくまとめてください。
+
+本人がどんな話題について何を話していたかが
+分かる要約にしてください。
+""".strip()
+
+        user = (
+            "以下の発言を要約してください。\n\n"
+            f"{joined}"
+        )
+
         return await self.call_gpt(
-            system=(
-                "以下の発言ログを"
-                "400文字以内で要約してください。"
-                "一人称は「茜」、"
-                "自然な関西弁で。"
-            ),
-            user="\n".join(
-                text_list
-            ),
+            system=system,
+            user=user,
             model=Config.CHAT_MODEL,
-            max_tokens=800
+            max_tokens=1000,
+            reasoning_effort=(
+                Config.CHAT_REASONING_EFFORT
+            )
         )
