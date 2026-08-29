@@ -8,6 +8,7 @@ from discord.ext import commands
 from ai_manager import AiManager
 from config import Config
 from database import DatabaseManager
+from db_migrations import LATEST_SCHEMA_VERSION, run_migrations
 from views.event_view import EventView
 from views.ticket_view import TicketCloseView, TicketView
 
@@ -70,6 +71,19 @@ class AkaneBot(commands.Bot):
         try:
             await self.db.init()
             logger.info(f"Database initialized: {Config.DB_NAME}")
+
+            applied = await run_migrations(self.db.path)
+            if applied:
+                logger.info(
+                    "Database migrations applied | "
+                    + ", ".join(
+                        f"v{migration.version}:{migration.name}"
+                        for migration in applied
+                    )
+                )
+            logger.info(
+                f"Database schema version: {LATEST_SCHEMA_VERSION}"
+            )
         except Exception as error:
             logger.exception(f"Database initialization failed: {error}")
             raise
