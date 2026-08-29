@@ -1,10 +1,14 @@
+import hashlib
 import io
 import logging
+import random
+
 from datetime import datetime, timedelta
 from typing import Optional
 
 import discord
 import pytz
+
 from discord import app_commands
 from discord.ext import commands
 
@@ -20,6 +24,85 @@ class GeneralCog(commands.Cog):
     def __init__(self, bot):
 
         self.bot = bot
+
+    # ==========================================================================
+    # Helpers
+    # ==========================================================================
+
+    async def _send_unlock_notifications(
+        self,
+        interaction: discord.Interaction,
+        unlocks: dict
+    ):
+
+        if not Config.ACHIEVEMENT_NOTIFICATIONS:
+            return
+
+        achievement_keys = unlocks.get(
+            "achievements",
+            []
+        )
+
+        title_keys = unlocks.get(
+            "titles",
+            []
+        )
+
+        if (
+            not achievement_keys
+            and not title_keys
+        ):
+            return
+
+        lines = []
+
+        for key in achievement_keys:
+
+            data = Config.ACHIEVEMENTS.get(
+                key
+            )
+
+            if not data:
+                continue
+
+            lines.append(
+                f"🏆 実績解除: "
+                f"**{data['emoji']} "
+                f"{data['name']}**"
+            )
+
+        for key in title_keys:
+
+            data = Config.TITLES.get(
+                key
+            )
+
+            if not data:
+                continue
+
+            lines.append(
+                f"🎖️ 称号獲得: "
+                f"**{data['name']}**"
+            )
+
+        if not lines:
+            return
+
+        try:
+
+            await interaction.followup.send(
+                "\n".join(
+                    lines
+                ),
+                ephemeral=True
+            )
+
+        except Exception as e:
+
+            logger.exception(
+                "Unlock notification failed | "
+                f"error={e}"
+            )
 
     # ==========================================================================
     # Translate
@@ -40,25 +123,34 @@ class GeneralCog(commands.Cog):
 
         try:
 
-            result = await self.bot.ai.translate(
-                text,
-                language
+            result = (
+                await self.bot.ai.translate(
+                    text,
+                    language
+                )
             )
 
-            if not result or not result.strip():
+            if (
+                not result
+                or not result.strip()
+            ):
+
                 result = Config.ERROR_MSG
 
             if len(result) > 4000:
 
                 file = discord.File(
                     io.BytesIO(
-                        result.encode()
+                        result.encode(
+                            "utf-8"
+                        )
                     ),
                     filename="trans.txt"
                 )
 
                 await interaction.followup.send(
-                    "長すぎるからファイルにするな！",
+                    "長すぎるから"
+                    "ファイルにするな！",
                     file=file
                 )
 
@@ -66,7 +158,10 @@ class GeneralCog(commands.Cog):
 
                 await interaction.followup.send(
                     embed=discord.Embed(
-                        title=f"翻訳 ({language})",
+                        title=(
+                            f"翻訳 "
+                            f"({language})"
+                        ),
                         description=result,
                         color=discord.Color.blue()
                     )
@@ -89,7 +184,7 @@ class GeneralCog(commands.Cog):
 
     @app_commands.command(
         name="define",
-        description="AI辞書 (400文字解説)"
+        description="AI辞書"
     )
     async def define(
         self,
@@ -102,12 +197,17 @@ class GeneralCog(commands.Cog):
 
         try:
 
-            result = await self.bot.ai.define_word(
-                word,
-                wiki_mode
+            result = (
+                await self.bot.ai.define_word(
+                    word,
+                    wiki_mode
+                )
             )
 
-            if not result or not result.strip():
+            if (
+                not result
+                or not result.strip()
+            ):
 
                 await interaction.followup.send(
                     Config.ERROR_MSG,
@@ -120,13 +220,16 @@ class GeneralCog(commands.Cog):
 
                 file = discord.File(
                     io.BytesIO(
-                        result.encode()
+                        result.encode(
+                            "utf-8"
+                        )
                     ),
                     filename="define.txt"
                 )
 
                 await interaction.followup.send(
-                    "長すぎるからファイルにするな！",
+                    "長すぎるから"
+                    "ファイルにするな！",
                     file=file
                 )
 
@@ -162,7 +265,8 @@ class GeneralCog(commands.Cog):
             )
 
             await interaction.followup.send(
-                "辞書処理中にエラーが起きたで。",
+                "辞書処理中に"
+                "エラーが起きたで。",
                 ephemeral=True
             )
 
@@ -182,7 +286,10 @@ class GeneralCog(commands.Cog):
 
         back = max(
             1,
-            min(back, 20)
+            min(
+                back,
+                20
+            )
         )
 
         await interaction.response.defer(
@@ -197,7 +304,10 @@ class GeneralCog(commands.Cog):
                 in interaction.channel.history(
                     limit=100
                 )
-                if message.author == interaction.user
+                if (
+                    message.author
+                    == interaction.user
+                )
             ][:back]
 
             if not messages:
@@ -211,11 +321,17 @@ class GeneralCog(commands.Cog):
 
             messages.reverse()
 
-            result = await self.bot.ai.summarize(
-                messages
+            result = (
+                await self.bot.ai.summarize(
+                    messages
+                )
             )
 
-            if not result or not result.strip():
+            if (
+                not result
+                or not result.strip()
+            ):
+
                 result = Config.ERROR_MSG
 
             await interaction.followup.send(
@@ -244,7 +360,7 @@ class GeneralCog(commands.Cog):
 
     @app_commands.command(
         name="event",
-        description="イベント(スケジュール)作成"
+        description="イベント作成"
     )
     async def event(
         self,
@@ -268,7 +384,8 @@ class GeneralCog(commands.Cog):
         except ValueError:
 
             await interaction.response.send_message(
-                "日時は `YYYY/MM/DD HH:MM` "
+                "日時は "
+                "`YYYY/MM/DD HH:MM` "
                 "の形式で頼むで！",
                 ephemeral=True
             )
@@ -281,7 +398,10 @@ class GeneralCog(commands.Cog):
 
         embed = discord.Embed(
             title=f"📅 {title}",
-            description=f"日時: <t:{timestamp}:F>",
+            description=(
+                f"日時: "
+                f"<t:{timestamp}:F>"
+            ),
             color=discord.Color.green()
         )
 
@@ -307,23 +427,31 @@ class GeneralCog(commands.Cog):
                 start_time=event_datetime,
                 end_time=(
                     event_datetime
-                    + timedelta(hours=2)
+                    + timedelta(
+                        hours=2
+                    )
                 ),
                 location="Discord",
-                entity_type=discord.EntityType.external,
-                privacy_level=discord.PrivacyLevel.guild_only
+                entity_type=(
+                    discord.EntityType.external
+                ),
+                privacy_level=(
+                    discord.PrivacyLevel.guild_only
+                )
             )
 
         except discord.Forbidden:
 
             logger.warning(
-                "Scheduled event permission denied."
+                "Scheduled event "
+                "permission denied."
             )
 
         except Exception as e:
 
             logger.exception(
-                f"Scheduled event creation failed: {e}"
+                "Scheduled event "
+                f"creation failed: {e}"
             )
 
     # ==========================================================================
@@ -346,11 +474,12 @@ class GeneralCog(commands.Cog):
 
         options = [
             option
-            for option in [
+            for option
+            in [
                 option1,
                 option2,
                 option3,
-                option4
+                option4,
             ]
             if option
         ]
@@ -359,13 +488,15 @@ class GeneralCog(commands.Cog):
             "1️⃣",
             "2️⃣",
             "3️⃣",
-            "4️⃣"
+            "4️⃣",
         ]
 
         description = "\n".join(
             f"{emojis[index]} {option}"
             for index, option
-            in enumerate(options)
+            in enumerate(
+                options
+            )
         )
 
         await interaction.response.send_message(
@@ -376,9 +507,14 @@ class GeneralCog(commands.Cog):
             )
         )
 
-        message = await interaction.original_response()
+        message = (
+            await interaction
+            .original_response()
+        )
 
-        for index in range(len(options)):
+        for index in range(
+            len(options)
+        ):
 
             await message.add_reaction(
                 emojis[index]
@@ -390,7 +526,7 @@ class GeneralCog(commands.Cog):
 
     @app_commands.command(
         name="search",
-        description="検索"
+        description="メッセージ検索"
     )
     async def search(
         self,
@@ -415,8 +551,12 @@ class GeneralCog(commands.Cog):
         )
 
         after = (
-            datetime.now(pytz.utc)
-            - timedelta(days=days)
+            datetime.now(
+                pytz.utc
+            )
+            - timedelta(
+                days=days
+            )
             if days
             else None
         )
@@ -434,11 +574,14 @@ class GeneralCog(commands.Cog):
                     member
                     and message.author != member
                 ):
+
                     continue
 
                 if keyword in message.content:
 
-                    found.append(message)
+                    found.append(
+                        message
+                    )
 
                     if len(found) >= 100:
                         break
@@ -453,10 +596,23 @@ class GeneralCog(commands.Cog):
 
             return
 
+        except Exception as e:
+
+            logger.exception(
+                f"/search failed: {e}"
+            )
+
+            await interaction.followup.send(
+                "検索中にエラーが起きたで。",
+                ephemeral=True
+            )
+
+            return
+
         if not found:
 
             await interaction.followup.send(
-                "なし",
+                "見つからへんかったで。",
                 ephemeral=True
             )
 
@@ -475,13 +631,16 @@ class GeneralCog(commands.Cog):
 
             file = discord.File(
                 io.BytesIO(
-                    text.encode()
+                    text.encode(
+                        "utf-8"
+                    )
                 ),
                 filename="result.txt"
             )
 
             await interaction.followup.send(
-                f"{len(found)}件 (ファイル)",
+                f"{len(found)}件 "
+                "(ファイル)",
                 file=file,
                 ephemeral=True
             )
@@ -490,7 +649,8 @@ class GeneralCog(commands.Cog):
 
             description = "\n".join(
                 (
-                    f"• [{message.content[:30]}]"
+                    f"• "
+                    f"[{message.content[:30]}]"
                     f"({message.jump_url})"
                 )
                 for message in found
@@ -498,7 +658,10 @@ class GeneralCog(commands.Cog):
 
             await interaction.followup.send(
                 embed=discord.Embed(
-                    title=f"検索: {keyword}",
+                    title=(
+                        f"検索: "
+                        f"{keyword}"
+                    ),
                     description=description
                 ),
                 ephemeral=True
@@ -528,7 +691,8 @@ class GeneralCog(commands.Cog):
 
             await interaction.response.send_message(
                 (
-                    f"📊 **Lv.{info['level']}**\n"
+                    f"📊 "
+                    f"**Lv.{info['level']}**\n"
                     f"✨ XP: "
                     f"**{info['xp']} / "
                     f"{info['required_xp']}**\n"
@@ -545,7 +709,8 @@ class GeneralCog(commands.Cog):
             )
 
             await interaction.response.send_message(
-                "レベル情報を取得できへんかったわ。",
+                "レベル情報を"
+                "取得できへんかったわ。",
                 ephemeral=True
             )
 
@@ -555,7 +720,7 @@ class GeneralCog(commands.Cog):
 
     @app_commands.command(
         name="leaderboard",
-        description="ランキング(TOP30)"
+        description="ランキング TOP30"
     )
     async def leaderboard(
         self,
@@ -566,44 +731,73 @@ class GeneralCog(commands.Cog):
             ephemeral=True
         )
 
-        rows = await self.bot.db.get_leaderboard(
-            30
-        )
+        try:
 
-        lines = []
-
-        for index, (
-            user_id,
-            level_value,
-            xp
-        ) in enumerate(rows, 1):
-
-            member = interaction.guild.get_member(
-                int(user_id)
+            rows = (
+                await self.bot.db
+                .get_leaderboard(
+                    30
+                )
             )
 
-            name = (
-                member.display_name
-                if member
-                else "Unknown"
-            )
+            lines = []
 
-            lines.append(
-                f"{index}. {name} "
-                f"(Lv.{level_value})"
-            )
+            for index, (
+                user_id,
+                level_value,
+                xp
+            ) in enumerate(
+                rows,
+                1
+            ):
 
-        await interaction.followup.send(
-            embed=discord.Embed(
-                title="🏆 ランキング",
-                description=(
-                    "\n".join(lines)
-                    or "データなし"
+                member = (
+                    interaction.guild
+                    .get_member(
+                        int(
+                            user_id
+                        )
+                    )
+                )
+
+                name = (
+                    member.display_name
+                    if member
+                    else "Unknown"
+                )
+
+                lines.append(
+                    f"{index}. "
+                    f"{name} "
+                    f"(Lv.{level_value} / "
+                    f"XP {xp})"
+                )
+
+            await interaction.followup.send(
+                embed=discord.Embed(
+                    title="🏆 ランキング",
+                    description=(
+                        "\n".join(
+                            lines
+                        )
+                        or "データなし"
+                    ),
+                    color=discord.Color.gold()
                 ),
-                color=discord.Color.gold()
-            ),
-            ephemeral=True
-        )
+                ephemeral=True
+            )
+
+        except Exception as e:
+
+            logger.exception(
+                f"/leaderboard failed: {e}"
+            )
+
+            await interaction.followup.send(
+                "ランキング取得中に"
+                "エラーが起きたで。",
+                ephemeral=True
+            )
 
     # ==========================================================================
     # Reminder
@@ -632,7 +826,8 @@ class GeneralCog(commands.Cog):
         if minutes > 10080:
 
             await interaction.response.send_message(
-                "最大7日（10080分）までにしてな！",
+                "最大7日"
+                "（10080分）までにしてな！",
                 ephemeral=True
             )
 
@@ -665,7 +860,8 @@ class GeneralCog(commands.Cog):
         except Exception as e:
 
             logger.exception(
-                f"Reminder registration failed: {e}"
+                "Reminder registration "
+                f"failed: {e}"
             )
 
             await interaction.response.send_message(
@@ -675,7 +871,7 @@ class GeneralCog(commands.Cog):
             )
 
     # ==========================================================================
-    # v29 Memory Status
+    # Memory
     # ==========================================================================
 
     @app_commands.command(
@@ -690,7 +886,8 @@ class GeneralCog(commands.Cog):
         if not interaction.guild:
 
             await interaction.response.send_message(
-                "この機能はサーバー内専用やで。",
+                "この機能は"
+                "サーバー内専用やで。",
                 ephemeral=True
             )
 
@@ -701,9 +898,15 @@ class GeneralCog(commands.Cog):
             count = (
                 await self.bot.db
                 .count_conversation_history(
-                    guild_id=interaction.guild.id,
-                    channel_id=interaction.channel.id,
-                    user_id=interaction.user.id
+                    guild_id=(
+                        interaction.guild.id
+                    ),
+                    channel_id=(
+                        interaction.channel.id
+                    ),
+                    user_id=(
+                        interaction.user.id
+                    )
                 )
             )
 
@@ -715,11 +918,13 @@ class GeneralCog(commands.Cog):
             embed = discord.Embed(
                 title="🧠 茜の会話メモリー",
                 description=(
-                    f"このチャンネルで保存されてる履歴: "
+                    "このチャンネルで"
+                    "保存されてる履歴: "
                     f"**{count}件**\n"
-                    f"次の会話で参照する最大履歴: "
+                    "次の会話で参照する"
+                    "最大履歴: "
                     f"**{active_count}件**\n"
-                    f"保存期間: "
+                    "保存期間: "
                     f"**{Config.MEMORY_RETENTION_DAYS}日**"
                 ),
                 color=discord.Color.purple()
@@ -727,7 +932,8 @@ class GeneralCog(commands.Cog):
 
             embed.set_footer(
                 text=(
-                    "/forget で自分の履歴を消せるで"
+                    "/forget で"
+                    "自分の履歴を消せるで"
                 )
             )
 
@@ -743,12 +949,13 @@ class GeneralCog(commands.Cog):
             )
 
             await interaction.response.send_message(
-                "記憶情報を確認できへんかったわ。",
+                "記憶情報を"
+                "確認できへんかったわ。",
                 ephemeral=True
             )
 
     # ==========================================================================
-    # v29 Forget
+    # Forget
     # ==========================================================================
 
     @app_commands.command(
@@ -757,8 +964,8 @@ class GeneralCog(commands.Cog):
     )
     @app_commands.describe(
         all_channels=(
-            "このサーバー内の全チャンネルの"
-            "履歴を消すか"
+            "このサーバー内の"
+            "全チャンネル履歴を消すか"
         )
     )
     async def forget(
@@ -770,7 +977,8 @@ class GeneralCog(commands.Cog):
         if not interaction.guild:
 
             await interaction.response.send_message(
-                "この機能はサーバー内専用やで。",
+                "この機能は"
+                "サーバー内専用やで。",
                 ephemeral=True
             )
 
@@ -783,14 +991,19 @@ class GeneralCog(commands.Cog):
                 deleted = (
                     await self.bot.db
                     .clear_all_user_history(
-                        guild_id=interaction.guild.id,
-                        user_id=interaction.user.id
+                        guild_id=(
+                            interaction.guild.id
+                        ),
+                        user_id=(
+                            interaction.user.id
+                        )
                     )
                 )
 
                 await interaction.response.send_message(
-                    f"🧹 このサーバーで覚えてた"
-                    f"会話履歴を **{deleted}件** 消したで！",
+                    "🧹 このサーバーで覚えてた"
+                    f"会話履歴を **{deleted}件** "
+                    "消したで！",
                     ephemeral=True
                 )
 
@@ -799,15 +1012,22 @@ class GeneralCog(commands.Cog):
                 deleted = (
                     await self.bot.db
                     .clear_conversation_history(
-                        guild_id=interaction.guild.id,
-                        channel_id=interaction.channel.id,
-                        user_id=interaction.user.id
+                        guild_id=(
+                            interaction.guild.id
+                        ),
+                        channel_id=(
+                            interaction.channel.id
+                        ),
+                        user_id=(
+                            interaction.user.id
+                        )
                     )
                 )
 
                 await interaction.response.send_message(
-                    f"🧹 このチャンネルで覚えてた"
-                    f"会話履歴を **{deleted}件** 消したで！",
+                    "🧹 このチャンネルで覚えてた"
+                    f"会話履歴を **{deleted}件** "
+                    "消したで！",
                     ephemeral=True
                 )
 
@@ -818,55 +1038,114 @@ class GeneralCog(commands.Cog):
             )
 
             await interaction.response.send_message(
-                "履歴削除中にエラーが起きたで。",
+                "履歴削除中に"
+                "エラーが起きたで。",
                 ephemeral=True
             )
 
     # ==========================================================================
-    # Profile - v30
+    # V32 Profile
     # ==========================================================================
 
     @app_commands.command(
         name="profile",
-        description="自分のプロフィール・レベル情報を表示"
+        description="プロフィールを表示"
     )
     async def profile(
         self,
-        interaction: discord.Interaction
+        interaction: discord.Interaction,
+        member: Optional[
+            discord.Member
+        ] = None
     ):
+
+        if not interaction.guild:
+
+            await interaction.response.send_message(
+                "この機能は"
+                "サーバー内専用やで。",
+                ephemeral=True
+            )
+
+            return
+
+        target = (
+            member
+            or interaction.user
+        )
 
         try:
 
-            info = (
+            level_info = (
                 await self.bot.db
                 .get_level_info(
-                    interaction.user.id
+                    target.id
                 )
             )
 
-            level = info[
-                "level"
-            ]
+            stats = (
+                await self.bot.db
+                .get_user_stats(
+                    interaction.guild.id,
+                    target.id
+                )
+            )
 
-            xp = info[
-                "xp"
-            ]
+            achievements = (
+                await self.bot.db
+                .get_user_achievements(
+                    interaction.guild.id,
+                    target.id
+                )
+            )
 
-            required = info[
-                "required_xp"
-            ]
+            titles = (
+                await self.bot.db
+                .get_user_titles(
+                    interaction.guild.id,
+                    target.id
+                )
+            )
 
-            remaining = info[
-                "remaining_xp"
-            ]
+            equipped_key = (
+                await self.bot.db
+                .get_equipped_title(
+                    interaction.guild.id,
+                    target.id
+                )
+            )
 
-            percentage = info[
-                "percentage"
-            ]
+            # ==================================================================
+            # Title
+            # ==================================================================
 
-            # ==============================================================
-            # XP Progress Bar
-            # ==============================================================
+            if (
+                equipped_key
+                and equipped_key
+                in Config.TITLES
+            ):
+
+                equipped_title = (
+                    Config.TITLES[
+                        equipped_key
+                    ]["name"]
+                )
+
+            else:
+
+                equipped_title = (
+                    "称号なし"
+                )
+
+            # ==================================================================
+            # XP Bar
+            # ==================================================================
+
+            percentage = (
+                level_info[
+                    "percentage"
+                ]
+            )
 
             bar_length = 10
 
@@ -892,10 +1171,49 @@ class GeneralCog(commands.Cog):
                 )
             )
 
+            # ==================================================================
+            # Achievement Preview
+            # ==================================================================
+
+            preview_lines = []
+
+            for (
+                achievement_key,
+                unlocked_at
+            ) in achievements[
+                -Config.PROFILE_ACHIEVEMENT_PREVIEW:
+            ]:
+
+                data = (
+                    Config.ACHIEVEMENTS.get(
+                        achievement_key
+                    )
+                )
+
+                if not data:
+                    continue
+
+                preview_lines.append(
+                    f"{data['emoji']} "
+                    f"{data['name']}"
+                )
+
+            achievement_preview = (
+                "\n".join(
+                    preview_lines
+                )
+                if preview_lines
+                else "まだ実績なし"
+            )
+
+            # ==================================================================
+            # Embed
+            # ==================================================================
+
             embed = discord.Embed(
                 title=(
                     f"🌸 "
-                    f"{interaction.user.display_name}"
+                    f"{target.display_name}"
                     f" のプロフィール"
                 ),
                 color=discord.Color.pink()
@@ -903,16 +1221,25 @@ class GeneralCog(commands.Cog):
 
             embed.set_thumbnail(
                 url=(
-                    interaction.user
+                    target
                     .display_avatar
                     .url
                 )
             )
 
             embed.add_field(
+                name="🎖️ 称号",
+                value=(
+                    f"**{equipped_title}**"
+                ),
+                inline=False
+            )
+
+            embed.add_field(
                 name="📊 レベル",
                 value=(
-                    f"**Lv.{level}**"
+                    f"**Lv."
+                    f"{level_info['level']}**"
                 ),
                 inline=True
             )
@@ -920,15 +1247,21 @@ class GeneralCog(commands.Cog):
             embed.add_field(
                 name="✨ XP",
                 value=(
-                    f"**{xp} / {required}**"
+                    f"**"
+                    f"{level_info['xp']} "
+                    f"/ "
+                    f"{level_info['required_xp']}"
+                    f"**"
                 ),
                 inline=True
             )
 
             embed.add_field(
-                name="🎯 次のレベルまで",
+                name="🎯 次まで",
                 value=(
-                    f"あと **{remaining} XP**"
+                    f"**"
+                    f"{level_info['remaining_xp']} XP"
+                    f"**"
                 ),
                 inline=True
             )
@@ -942,11 +1275,74 @@ class GeneralCog(commands.Cog):
                 inline=False
             )
 
+            embed.add_field(
+                name="💬 メッセージ",
+                value=(
+                    f"**"
+                    f"{stats['message_count']}回"
+                    f"**"
+                ),
+                inline=True
+            )
+
+            embed.add_field(
+                name="🤖 AI会話",
+                value=(
+                    f"**"
+                    f"{stats['ai_chat_count']}回"
+                    f"**"
+                ),
+                inline=True
+            )
+
+            embed.add_field(
+                name="🔮 運勢",
+                value=(
+                    f"**"
+                    f"{stats['fortune_count']}日"
+                    f"**"
+                ),
+                inline=True
+            )
+
+            embed.add_field(
+                name="📩 Ticket",
+                value=(
+                    f"**"
+                    f"{stats['ticket_count']}回"
+                    f"**"
+                ),
+                inline=True
+            )
+
+            embed.add_field(
+                name="🏆 実績",
+                value=(
+                    f"**{len(achievements)} / "
+                    f"{len(Config.ACHIEVEMENTS)}**"
+                ),
+                inline=True
+            )
+
+            embed.add_field(
+                name="🎖️ 称号数",
+                value=(
+                    f"**{len(titles)} / "
+                    f"{len(Config.TITLES)}**"
+                ),
+                inline=True
+            )
+
+            embed.add_field(
+                name="最近の実績",
+                value=achievement_preview,
+                inline=False
+            )
+
             embed.set_footer(
                 text=(
-                    f"XPは約"
-                    f"{Config.XP_COOLDOWN_SECONDS}秒に"
-                    "1回獲得できるで！"
+                    "/achievements /titles "
+                    "でも確認できるで"
                 )
             )
 
@@ -966,6 +1362,640 @@ class GeneralCog(commands.Cog):
                 "エラーが起きたで。",
                 ephemeral=True
             )
+
+    # ==========================================================================
+    # V32 Fortune
+    # ==========================================================================
+
+    @app_commands.command(
+        name="fortune",
+        description="今日の運勢を占う"
+    )
+    async def fortune(
+        self,
+        interaction: discord.Interaction
+    ):
+
+        if not interaction.guild:
+
+            await interaction.response.send_message(
+                "この機能は"
+                "サーバー内専用やで。",
+                ephemeral=True
+            )
+
+            return
+
+        await interaction.response.defer(
+            ephemeral=True
+        )
+
+        try:
+
+            guild_id = (
+                interaction.guild.id
+            )
+
+            user_id = (
+                interaction.user.id
+            )
+
+            existing = (
+                await self.bot.db
+                .get_today_fortune(
+                    guild_id,
+                    user_id
+                )
+            )
+
+            is_new = (
+                existing is None
+            )
+
+            # ==================================================================
+            # その日の結果を固定
+            # ==================================================================
+
+            if existing:
+
+                fortune_key = existing[0]
+                score = int(
+                    existing[1]
+                )
+
+            else:
+
+                today = datetime.now(
+                    JST
+                ).strftime(
+                    "%Y-%m-%d"
+                )
+
+                seed_text = (
+                    f"{guild_id}:"
+                    f"{user_id}:"
+                    f"{today}:"
+                    "akane-v32"
+                )
+
+                digest = hashlib.sha256(
+                    seed_text.encode(
+                        "utf-8"
+                    )
+                ).hexdigest()
+
+                seed = int(
+                    digest[:16],
+                    16
+                )
+
+                rng = random.Random(
+                    seed
+                )
+
+                score = rng.randint(
+                    1,
+                    100
+                )
+
+                if score >= 96:
+
+                    fortune_key = (
+                        "super_lucky"
+                    )
+
+                elif score >= 81:
+
+                    fortune_key = (
+                        "great_lucky"
+                    )
+
+                elif score >= 61:
+
+                    fortune_key = (
+                        "lucky"
+                    )
+
+                elif score >= 41:
+
+                    fortune_key = (
+                        "small_lucky"
+                    )
+
+                elif score >= 21:
+
+                    fortune_key = (
+                        "neutral"
+                    )
+
+                else:
+
+                    fortune_key = (
+                        "careful"
+                    )
+
+                await self.bot.db.save_today_fortune(
+                    guild_id,
+                    user_id,
+                    fortune_key,
+                    score
+                )
+
+                await self.bot.db.increment_fortune_count(
+                    guild_id,
+                    user_id
+                )
+
+            # ==================================================================
+            # Result
+            # ==================================================================
+
+            fortunes = {
+                "super_lucky": {
+                    "name": "🌈 超大吉",
+                    "message": (
+                        "今日はかなりええ日になりそうや！"
+                        "思い切って動くんもアリやで。"
+                    ),
+                },
+
+                "great_lucky": {
+                    "name": "✨ 大吉",
+                    "message": (
+                        "ええ流れ来てるで！"
+                        "やりたかったことを"
+                        "進めるのに向いてそうや。"
+                    ),
+                },
+
+                "lucky": {
+                    "name": "🌸 吉",
+                    "message": (
+                        "なかなかええ感じやな。"
+                        "焦らず動けば"
+                        "良い結果につながりそうやで。"
+                    ),
+                },
+
+                "small_lucky": {
+                    "name": "🍀 小吉",
+                    "message": (
+                        "小さなラッキーが"
+                        "ありそうな日や。"
+                        "身近なことを大事にな。"
+                    ),
+                },
+
+                "neutral": {
+                    "name": "☕ 末吉",
+                    "message": (
+                        "今日は無理に勝負せんでもええ日や。"
+                        "普段通りが一番やで。"
+                    ),
+                },
+
+                "careful": {
+                    "name": "🌧️ 注意",
+                    "message": (
+                        "今日はちょっと慎重めがええかもな。"
+                        "忘れ物と勢い任せには注意やで。"
+                    ),
+                },
+            }
+
+            fortune_data = (
+                fortunes[
+                    fortune_key
+                ]
+            )
+
+            lucky_items = [
+                "コーヒー",
+                "チョコ",
+                "イヤホン",
+                "本",
+                "赤いもの",
+                "青いもの",
+                "温かい飲み物",
+                "お気に入りの曲",
+                "甘いもの",
+                "メモ帳",
+            ]
+
+            item_seed = (
+                score
+                + user_id
+                + interaction.guild.id
+            )
+
+            lucky_item = lucky_items[
+                item_seed
+                % len(
+                    lucky_items
+                )
+            ]
+
+            embed = discord.Embed(
+                title=(
+                    "🔮 今日の運勢"
+                ),
+                description=(
+                    f"## "
+                    f"{fortune_data['name']}\n\n"
+                    f"{fortune_data['message']}"
+                ),
+                color=discord.Color.purple()
+            )
+
+            embed.add_field(
+                name="運勢スコア",
+                value=f"**{score} / 100**",
+                inline=True
+            )
+
+            embed.add_field(
+                name="ラッキーアイテム",
+                value=f"**{lucky_item}**",
+                inline=True
+            )
+
+            embed.set_footer(
+                text=(
+                    "今日中は何回見ても"
+                    "同じ結果やで"
+                )
+            )
+
+            await interaction.followup.send(
+                embed=embed,
+                ephemeral=True
+            )
+
+            # ==================================================================
+            # Unlock
+            # ==================================================================
+
+            if is_new:
+
+                unlocks = (
+                    await self.bot.db
+                    .evaluate_progress_unlocks(
+                        guild_id,
+                        user_id
+                    )
+                )
+
+                await self._send_unlock_notifications(
+                    interaction,
+                    unlocks
+                )
+
+        except Exception as e:
+
+            logger.exception(
+                f"/fortune failed: {e}"
+            )
+
+            await interaction.followup.send(
+                "占い中に"
+                "エラーが起きたで。",
+                ephemeral=True
+            )
+
+    # ==========================================================================
+    # V32 Achievements
+    # ==========================================================================
+
+    @app_commands.command(
+        name="achievements",
+        description="実績一覧を表示"
+    )
+    async def achievements(
+        self,
+        interaction: discord.Interaction,
+        member: Optional[
+            discord.Member
+        ] = None
+    ):
+
+        if not interaction.guild:
+
+            await interaction.response.send_message(
+                "この機能は"
+                "サーバー内専用やで。",
+                ephemeral=True
+            )
+
+            return
+
+        target = (
+            member
+            or interaction.user
+        )
+
+        try:
+
+            # 既存レベルなどもここで再評価
+            await self.bot.db.evaluate_progress_unlocks(
+                interaction.guild.id,
+                target.id
+            )
+
+            unlocked_rows = (
+                await self.bot.db
+                .get_user_achievements(
+                    interaction.guild.id,
+                    target.id
+                )
+            )
+
+            unlocked_keys = {
+                row[0]
+                for row in unlocked_rows
+            }
+
+            lines = []
+
+            for key, data in (
+                Config.ACHIEVEMENTS.items()
+            ):
+
+                if key in unlocked_keys:
+
+                    mark = "✅"
+
+                else:
+
+                    mark = "🔒"
+
+                lines.append(
+                    f"{mark} "
+                    f"{data['emoji']} "
+                    f"**{data['name']}**\n"
+                    f"　{data['description']}"
+                )
+
+            embed = discord.Embed(
+                title=(
+                    f"🏆 "
+                    f"{target.display_name}"
+                    " の実績"
+                ),
+                description="\n\n".join(
+                    lines
+                ),
+                color=discord.Color.gold()
+            )
+
+            embed.set_footer(
+                text=(
+                    f"{len(unlocked_keys)} / "
+                    f"{len(Config.ACHIEVEMENTS)} "
+                    "解除"
+                )
+            )
+
+            await interaction.response.send_message(
+                embed=embed,
+                ephemeral=True
+            )
+
+        except Exception as e:
+
+            logger.exception(
+                f"/achievements failed: {e}"
+            )
+
+            await interaction.response.send_message(
+                "実績一覧を"
+                "取得できへんかったわ。",
+                ephemeral=True
+            )
+
+    # ==========================================================================
+    # V32 Titles
+    # ==========================================================================
+
+    @app_commands.command(
+        name="titles",
+        description="獲得済み称号を表示"
+    )
+    async def titles(
+        self,
+        interaction: discord.Interaction
+    ):
+
+        if not interaction.guild:
+
+            await interaction.response.send_message(
+                "この機能は"
+                "サーバー内専用やで。",
+                ephemeral=True
+            )
+
+            return
+
+        try:
+
+            guild_id = (
+                interaction.guild.id
+            )
+
+            user_id = (
+                interaction.user.id
+            )
+
+            await self.bot.db.evaluate_progress_unlocks(
+                guild_id,
+                user_id
+            )
+
+            rows = (
+                await self.bot.db
+                .get_user_titles(
+                    guild_id,
+                    user_id
+                )
+            )
+
+            if not rows:
+
+                await interaction.response.send_message(
+                    "まだ称号を"
+                    "持ってへんみたいや。",
+                    ephemeral=True
+                )
+
+                return
+
+            lines = []
+
+            for (
+                title_key,
+                equipped,
+                unlocked_at
+            ) in rows:
+
+                data = (
+                    Config.TITLES.get(
+                        title_key
+                    )
+                )
+
+                if not data:
+                    continue
+
+                equipped_text = (
+                    " 👈 **装備中**"
+                    if equipped
+                    else ""
+                )
+
+                lines.append(
+                    f"`{title_key}` "
+                    f"{data['name']}"
+                    f"{equipped_text}\n"
+                    f"　{data['description']}"
+                )
+
+            embed = discord.Embed(
+                title="🎖️ 獲得済み称号",
+                description="\n\n".join(
+                    lines
+                ),
+                color=discord.Color.blurple()
+            )
+
+            embed.set_footer(
+                text=(
+                    "/title_set で"
+                    "プロフィール表示称号を変更"
+                )
+            )
+
+            await interaction.response.send_message(
+                embed=embed,
+                ephemeral=True
+            )
+
+        except Exception as e:
+
+            logger.exception(
+                f"/titles failed: {e}"
+            )
+
+            await interaction.response.send_message(
+                "称号一覧を"
+                "取得できへんかったわ。",
+                ephemeral=True
+            )
+
+    # ==========================================================================
+    # V32 Title Set
+    # ==========================================================================
+
+    @app_commands.command(
+        name="title_set",
+        description="プロフィールに表示する称号を変更"
+    )
+    @app_commands.describe(
+        title_key=(
+            "/titles に表示される"
+            "英数字のキー"
+        )
+    )
+    async def title_set(
+        self,
+        interaction: discord.Interaction,
+        title_key: str
+    ):
+
+        if not interaction.guild:
+
+            await interaction.response.send_message(
+                "この機能は"
+                "サーバー内専用やで。",
+                ephemeral=True
+            )
+
+            return
+
+        title_key = (
+            title_key
+            .strip()
+            .lower()
+        )
+
+        try:
+
+            if (
+                title_key
+                not in Config.TITLES
+            ):
+
+                await interaction.response.send_message(
+                    "その称号キーは"
+                    "存在せえへんで。\n"
+                    "`/titles` で確認してな。",
+                    ephemeral=True
+                )
+
+                return
+
+            has_title = (
+                await self.bot.db
+                .has_title(
+                    interaction.guild.id,
+                    interaction.user.id,
+                    title_key
+                )
+            )
+
+            if not has_title:
+
+                await interaction.response.send_message(
+                    "その称号は"
+                    "まだ獲得してへんで。",
+                    ephemeral=True
+                )
+
+                return
+
+            await self.bot.db.set_equipped_title(
+                interaction.guild.id,
+                interaction.user.id,
+                title_key
+            )
+
+            data = (
+                Config.TITLES[
+                    title_key
+                ]
+            )
+
+            await interaction.response.send_message(
+                f"🎖️ 表示称号を "
+                f"**{data['name']}** "
+                "に変更したで！",
+                ephemeral=True
+            )
+
+        except Exception as e:
+
+            logger.exception(
+                f"/title_set failed: {e}"
+            )
+
+            await interaction.response.send_message(
+                "称号変更中に"
+                "エラーが起きたで。",
+                ephemeral=True
+            )
+
+
+# ==============================================================================
+# Cog Setup
+# ==============================================================================
 
 async def setup(bot):
 
