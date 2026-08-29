@@ -34,16 +34,13 @@ class Config:
     # AI Models
     # ==========================================================================
 
-    # 普通の雑談
     CHAT_MODEL = "gpt-5-mini"
 
-    # 表現規制・法律・分析など
     REASONING_MODEL = "gpt-5.1"
 
-    # 翻訳・辞書など
     FAST_MODEL = "gpt-4o"
 
-    # 互換用
+    # 旧コード互換
     GPT_MODEL = CHAT_MODEL
 
     NORMAL_CHAT_MAX_TOKENS = 1500
@@ -64,52 +61,190 @@ class Config:
 
     XP_PER_MESSAGE = 10
 
-    # 同一ユーザーが再びXPを得られるまで
     XP_COOLDOWN_SECONDS = 60
 
     # ==========================================================================
     # V31 Spam Protection
     # ==========================================================================
 
-    # この秒数以内に
     SPAM_WINDOW_SECONDS = 5
 
-    # この件数投稿するとSpam判定
     SPAM_MESSAGE_THRESHOLD = 5
 
-    # Strikeをリセットするまで
     SPAM_STRIKE_RESET_SECONDS = 1800
 
-    # Strike 2
     SPAM_TIMEOUT_1_SECONDS = 30
 
-    # Strike 3
     SPAM_TIMEOUT_2_SECONDS = 300
 
-    # Strike 4以上
     SPAM_TIMEOUT_3_SECONDS = 1800
 
-    # 同一文章連投判定
     DUPLICATE_MESSAGE_THRESHOLD = 4
 
-    # メンション大量投稿判定
     MASS_MENTION_THRESHOLD = 8
 
     # ==========================================================================
     # V31 Ticket
     # ==========================================================================
 
-    # Transcriptで遡る最大メッセージ数
     TICKET_TRANSCRIPT_LIMIT = 1000
 
-    # Ticket Close確認の制限時間
     TICKET_CLOSE_CONFIRM_TIMEOUT = 60
+
+    # ==========================================================================
+    # V32 Profile / Achievement
+    # ==========================================================================
+
+    # 実績通知をDiscordへ表示するか
+    ACHIEVEMENT_NOTIFICATIONS = True
+
+    # プロフィールに表示する実績数
+    PROFILE_ACHIEVEMENT_PREVIEW = 5
+
+    # --------------------------------------------------------------------------
+    # 称号
+    # --------------------------------------------------------------------------
+
+    TITLES = {
+        "newcomer": {
+            "name": "🌱 新入り",
+            "description": "茜ちゃんのコミュニティへようこそ",
+        },
+
+        "regular": {
+            "name": "💬 常連さん",
+            "description": "100メッセージ達成",
+        },
+
+        "talkative": {
+            "name": "🗣️ おしゃべり好き",
+            "description": "500メッセージ達成",
+        },
+
+        "veteran": {
+            "name": "🏅 ベテラン",
+            "description": "1000メッセージ達成",
+        },
+
+        "level5": {
+            "name": "⭐ 駆け出し",
+            "description": "レベル5達成",
+        },
+
+        "level10": {
+            "name": "🌟 熟練者",
+            "description": "レベル10達成",
+        },
+
+        "level20": {
+            "name": "👑 古参",
+            "description": "レベル20達成",
+        },
+
+        "ai_friend": {
+            "name": "🤖 茜の話し相手",
+            "description": "AI会話10回達成",
+        },
+
+        "ai_partner": {
+            "name": "🧠 茜の相棒",
+            "description": "AI会話100回達成",
+        },
+
+        "supporter": {
+            "name": "📩 相談者",
+            "description": "Ticketを利用した",
+        },
+
+        "lucky": {
+            "name": "🍀 運試し好き",
+            "description": "今日の運勢を10回引いた",
+        },
+    }
+
+    # --------------------------------------------------------------------------
+    # 実績
+    # --------------------------------------------------------------------------
+
+    ACHIEVEMENTS = {
+        "first_message": {
+            "name": "はじめの一歩",
+            "emoji": "🌱",
+            "description": "初めてメッセージを送信",
+        },
+
+        "messages_100": {
+            "name": "おしゃべり開始",
+            "emoji": "💬",
+            "description": "100メッセージ送信",
+        },
+
+        "messages_500": {
+            "name": "チャット常連",
+            "emoji": "🗣️",
+            "description": "500メッセージ送信",
+        },
+
+        "messages_1000": {
+            "name": "千の言葉",
+            "emoji": "🏅",
+            "description": "1000メッセージ送信",
+        },
+
+        "level_5": {
+            "name": "Lv.5到達",
+            "emoji": "⭐",
+            "description": "レベル5に到達",
+        },
+
+        "level_10": {
+            "name": "Lv.10到達",
+            "emoji": "🌟",
+            "description": "レベル10に到達",
+        },
+
+        "level_20": {
+            "name": "Lv.20到達",
+            "emoji": "👑",
+            "description": "レベル20に到達",
+        },
+
+        "ai_10": {
+            "name": "茜と雑談",
+            "emoji": "🤖",
+            "description": "茜とAI会話を10回",
+        },
+
+        "ai_100": {
+            "name": "茜の相棒",
+            "emoji": "🧠",
+            "description": "茜とAI会話を100回",
+        },
+
+        "fortune_1": {
+            "name": "今日の運勢",
+            "emoji": "🔮",
+            "description": "初めて今日の運勢を確認",
+        },
+
+        "fortune_10": {
+            "name": "運試しの達人",
+            "emoji": "🍀",
+            "description": "10日分の運勢を確認",
+        },
+
+        "ticket_1": {
+            "name": "相談してみた",
+            "emoji": "📩",
+            "description": "初めてTicketを利用",
+        },
+    }
 
     # ==========================================================================
     # Database
     # ==========================================================================
 
-    # ★既存DBをそのまま使用する
+    # ★既存のRailway Volume上のDBを継続使用
     DB_NAME = (
         "/data/akane_v26.db"
         if os.path.exists("/data")
@@ -181,7 +316,7 @@ class Config:
     ]
 
     # ==========================================================================
-    # Translation reactions
+    # Translation Reactions
     # ==========================================================================
 
     FLAG_MAP = {
