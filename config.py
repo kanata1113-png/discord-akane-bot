@@ -68,7 +68,7 @@ class Config:
 
     REASONING_EFFORT = "medium"
 
-    DEEP_REASONING_EFFORT = "high"
+    DEEP_REASONING_EFFORT = "medium"
 
     # ==========================================================================
     # AI Limits
