@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from database import DatabaseManager
 from repositories.registry import RepositoryRegistry
+from services.maintenance_service import MaintenanceService
 from services.memory_service import MemoryService
 from services.progress_service import ProgressService
 from services.ticket_service import TicketService
@@ -18,3 +19,4 @@ class ServiceRegistry:
         self.memory = MemoryService(repositories.memory)
         self.tickets = TicketService(repositories.tickets)
         self.progress = ProgressService(legacy_db)
+        self.maintenance = MaintenanceService(repositories.maintenance)
