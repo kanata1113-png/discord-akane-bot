@@ -1,11 +1,19 @@
 import os
 import pytz
+
 from dotenv import load_dotenv
 
 
+# ==============================================================================
+# Environment
+# ==============================================================================
+
 load_dotenv()
 
-JST = pytz.timezone("Asia/Tokyo")
+
+JST = pytz.timezone(
+    "Asia/Tokyo"
+)
 
 
 class Config:
@@ -14,8 +22,13 @@ class Config:
     # Discord / OpenAI
     # ==========================================================================
 
-    DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    DISCORD_TOKEN = os.getenv(
+        "DISCORD_TOKEN"
+    )
+
+    OPENAI_API_KEY = os.getenv(
+        "OPENAI_API_KEY"
+    )
 
     # ==========================================================================
     # AI Models
@@ -24,13 +37,13 @@ class Config:
     # 普通の雑談
     CHAT_MODEL = "gpt-5-mini"
 
-    # 複雑な質問・表現規制・法律・分析
+    # 表現規制・法律・分析など
     REASONING_MODEL = "gpt-5.1"
 
     # 翻訳・辞書など
     FAST_MODEL = "gpt-4o"
 
-    # 互換性用
+    # 互換用
     GPT_MODEL = CHAT_MODEL
 
     NORMAL_CHAT_MAX_TOKENS = 1500
@@ -38,30 +51,65 @@ class Config:
     DAILY_LIMIT = 100
 
     # ==========================================================================
+    # AI Memory
+    # ==========================================================================
+
+    MEMORY_MESSAGE_LIMIT = 12
+
+    MEMORY_RETENTION_DAYS = 30
+
+    # ==========================================================================
     # Level / XP
     # ==========================================================================
 
     XP_PER_MESSAGE = 10
 
-    # 同一ユーザーがXPを再取得できるまでの秒数
+    # 同一ユーザーが再びXPを得られるまで
     XP_COOLDOWN_SECONDS = 60
 
     # ==========================================================================
-    # AI Memory
+    # V31 Spam Protection
     # ==========================================================================
 
-    # AIへ渡す過去メッセージ数
-    MEMORY_MESSAGE_LIMIT = 12
+    # この秒数以内に
+    SPAM_WINDOW_SECONDS = 5
 
-    # DBに保持する日数
-    MEMORY_RETENTION_DAYS = 30
+    # この件数投稿するとSpam判定
+    SPAM_MESSAGE_THRESHOLD = 5
+
+    # Strikeをリセットするまで
+    SPAM_STRIKE_RESET_SECONDS = 1800
+
+    # Strike 2
+    SPAM_TIMEOUT_1_SECONDS = 30
+
+    # Strike 3
+    SPAM_TIMEOUT_2_SECONDS = 300
+
+    # Strike 4以上
+    SPAM_TIMEOUT_3_SECONDS = 1800
+
+    # 同一文章連投判定
+    DUPLICATE_MESSAGE_THRESHOLD = 4
+
+    # メンション大量投稿判定
+    MASS_MENTION_THRESHOLD = 8
+
+    # ==========================================================================
+    # V31 Ticket
+    # ==========================================================================
+
+    # Transcriptで遡る最大メッセージ数
+    TICKET_TRANSCRIPT_LIMIT = 1000
+
+    # Ticket Close確認の制限時間
+    TICKET_CLOSE_CONFIRM_TIMEOUT = 60
 
     # ==========================================================================
     # Database
     # ==========================================================================
 
-    # ★絶対に変更しない
-    # 既存のXP・レベル・設定をそのまま使用する
+    # ★既存DBをそのまま使用する
     DB_NAME = (
         "/data/akane_v26.db"
         if os.path.exists("/data")
@@ -74,14 +122,17 @@ class Config:
 
     TIMEOUT_MSG = (
         "せっかく話しかけてもらったんやけど、"
-        "君の質問に答えようと思うとちょっと時間がかかりそうやわ。"
-        "よかったらもう少し茜が答えやすいようにもっかいやり直してもろてええか？ "
+        "君の質問に答えようと思うと"
+        "ちょっと時間がかかりそうやわ。"
+        "よかったらもう少し茜が答えやすいよう"
+        "もっかいやり直してもろてええか？ "
         "頼むわ🙏✨"
     )
 
     ERROR_MSG = (
         "ごめん、ちょっと調子悪いみたいで"
-        "うまく答えられへんかったわ... (エラー発生)"
+        "うまく答えられへんかったわ... "
+        "(エラー発生)"
     )
 
     EMPTY_MSG = (
@@ -90,7 +141,7 @@ class Config:
     )
 
     # ==========================================================================
-    # Regulation / Reasoning Keywords
+    # Regulation Keywords
     # ==========================================================================
 
     REGULATION_KEYWORDS = [
@@ -104,6 +155,10 @@ class Config:
         "弾圧",
         "ポリコレ",
     ]
+
+    # ==========================================================================
+    # Reasoning Keywords
+    # ==========================================================================
 
     REASONING_KEYWORDS = [
         "法律",
@@ -134,13 +189,16 @@ class Config:
         "🇬🇧": "English",
         "🇨🇦": "English",
         "🇦🇺": "English",
+
         "🇯🇵": "Japanese",
         "🇨🇳": "Chinese",
         "🇰🇷": "Korean",
+
         "🇫🇷": "French",
         "🇩🇪": "German",
         "🇮🇹": "Italian",
         "🇪🇸": "Spanish",
+
         "🇷🇺": "Russian",
         "🇻🇳": "Vietnamese",
         "🇹🇭": "Thai",
