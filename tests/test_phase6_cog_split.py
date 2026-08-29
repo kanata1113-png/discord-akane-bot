@@ -3,9 +3,13 @@ from __future__ import annotations
 import pytest
 
 import app
+from cogs.admin import AdminCommands as AdminEntrypoint
+from cogs.admin_commands import AdminCommands as AdminImplementation
 from cogs.background import BackgroundTasksCog
 from cogs.event_handlers import EventsCog as LegacyEventHandlersCog
 from cogs.events import EventsCog
+from cogs.general import GeneralCog as GeneralEntrypoint
+from cogs.general_commands import GeneralCog as GeneralImplementation
 from database import DatabaseManager
 from repositories import RepositoryRegistry
 from services import ServiceRegistry
@@ -14,6 +18,11 @@ from services import ServiceRegistry
 def test_background_extension_is_loaded_separately():
     assert "cogs.events" in app.EXTENSIONS
     assert "cogs.background" in app.EXTENSIONS
+
+
+def test_command_entrypoints_preserve_public_classes():
+    assert GeneralEntrypoint is GeneralImplementation
+    assert AdminEntrypoint is AdminImplementation
 
 
 def test_event_cog_overrides_legacy_background_lifecycle():
