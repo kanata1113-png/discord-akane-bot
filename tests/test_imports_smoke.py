@@ -6,6 +6,7 @@ import discord
 MODULES = [
     "config",
     "database",
+    "db_migrations",
     "ai_manager",
     "views.event_view",
     "views.ticket_view",
