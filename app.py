@@ -22,6 +22,7 @@ EXTENSIONS = (
     "cogs.admin",
     "cogs.general",
     "cogs.events",
+    "cogs.background",
 )
 
 

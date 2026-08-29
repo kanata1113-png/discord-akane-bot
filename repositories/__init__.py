@@ -1,4 +1,5 @@
 from repositories.guild_repository import GuildRepository
+from repositories.maintenance_repository import MaintenanceRepository
 from repositories.memory_repository import MemoryRepository
 from repositories.ranking_repository import RankingRepository
 from repositories.registry import RepositoryRegistry
@@ -7,6 +8,7 @@ from repositories.user_repository import UserRepository
 
 __all__ = [
     "GuildRepository",
+    "MaintenanceRepository",
     "MemoryRepository",
     "RankingRepository",
     "RepositoryRegistry",
