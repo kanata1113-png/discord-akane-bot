@@ -62,6 +62,22 @@ async def test_migrations_are_idempotent(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_incompatible_unversioned_schema_is_not_adopted(tmp_path):
+    db_path = tmp_path / "akane.db"
+    manager = DatabaseManager(str(db_path))
+    await manager.init()
+
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("DROP TABLE weekly_xp")
+        connection.commit()
+
+    with pytest.raises(RuntimeError, match="missing table weekly_xp"):
+        await run_migrations(str(db_path))
+
+    assert await get_schema_version(str(db_path)) == 0
+
+
+@pytest.mark.asyncio
 async def test_failed_migration_rolls_back_version_record(tmp_path, monkeypatch):
     db_path = tmp_path / "akane.db"
     manager = DatabaseManager(str(db_path))
