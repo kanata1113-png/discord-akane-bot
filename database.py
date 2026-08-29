@@ -19,6 +19,10 @@ class DatabaseManager:
 
         async with aiosqlite.connect(self.path) as db:
 
+            # ------------------------------------------------------------------
+            # AI 利用回数
+            # ------------------------------------------------------------------
+
             await db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS usage_log (
@@ -30,6 +34,10 @@ class DatabaseManager:
                 """
             )
 
+            # ------------------------------------------------------------------
+            # Starboard
+            # ------------------------------------------------------------------
+
             await db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS starboard_log (
@@ -37,6 +45,10 @@ class DatabaseManager:
                 )
                 """
             )
+
+            # ------------------------------------------------------------------
+            # Guild Settings
+            # ------------------------------------------------------------------
 
             await db.execute(
                 """
@@ -50,6 +62,10 @@ class DatabaseManager:
                 """
             )
 
+            # ------------------------------------------------------------------
+            # Users / Level
+            # ------------------------------------------------------------------
+
             await db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS users (
@@ -59,6 +75,10 @@ class DatabaseManager:
                 )
                 """
             )
+
+            # ------------------------------------------------------------------
+            # Level Rewards
+            # ------------------------------------------------------------------
 
             await db.execute(
                 """
@@ -71,6 +91,10 @@ class DatabaseManager:
                 """
             )
 
+            # ------------------------------------------------------------------
+            # Reaction Roles
+            # ------------------------------------------------------------------
+
             await db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS reaction_roles (
@@ -81,6 +105,10 @@ class DatabaseManager:
                 """
             )
 
+            # ------------------------------------------------------------------
+            # NG Words
+            # ------------------------------------------------------------------
+
             await db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS ng_words (
@@ -89,6 +117,10 @@ class DatabaseManager:
                 )
                 """
             )
+
+            # ------------------------------------------------------------------
+            # Auto Replies
+            # ------------------------------------------------------------------
 
             await db.execute(
                 """
@@ -99,6 +131,10 @@ class DatabaseManager:
                 )
                 """
             )
+
+            # ------------------------------------------------------------------
+            # Reminders
+            # ------------------------------------------------------------------
 
             await db.execute(
                 """
@@ -112,6 +148,10 @@ class DatabaseManager:
                 """
             )
 
+            # ------------------------------------------------------------------
+            # Monthly Rules
+            # ------------------------------------------------------------------
+
             await db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS monthly_rules (
@@ -122,9 +162,9 @@ class DatabaseManager:
                 """
             )
 
-            # ==================================================================
-            # ★ v29 AI会話履歴
-            # ==================================================================
+            # ------------------------------------------------------------------
+            # v29 AI Conversation Memory
+            # ------------------------------------------------------------------
 
             await db.execute(
                 """
@@ -142,8 +182,7 @@ class DatabaseManager:
 
             await db.execute(
                 """
-                CREATE INDEX IF NOT EXISTS
-                idx_conversation_lookup
+                CREATE INDEX IF NOT EXISTS idx_conversation_lookup
                 ON conversation_history (
                     guild_id,
                     channel_id,
@@ -156,10 +195,14 @@ class DatabaseManager:
             await db.commit()
 
     # ==========================================================================
-    # Helper
+    # DB Helper
     # ==========================================================================
 
-    async def _execute(self, query, params=()):
+    async def _execute(
+        self,
+        query,
+        params=()
+    ):
 
         async with aiosqlite.connect(self.path) as db:
 
@@ -170,7 +213,11 @@ class DatabaseManager:
 
             await db.commit()
 
-    async def _fetchone(self, query, params=()):
+    async def _fetchone(
+        self,
+        query,
+        params=()
+    ):
 
         async with aiosqlite.connect(self.path) as db:
 
@@ -181,7 +228,11 @@ class DatabaseManager:
 
             return await cursor.fetchone()
 
-    async def _fetchall(self, query, params=()):
+    async def _fetchall(
+        self,
+        query,
+        params=()
+    ):
 
         async with aiosqlite.connect(self.path) as db:
 
@@ -211,6 +262,7 @@ class DatabaseManager:
         }
 
         if col not in allowed_columns:
+
             raise ValueError(
                 f"Invalid guild config column: {col}"
             )
@@ -221,7 +273,9 @@ class DatabaseManager:
             FROM guild_settings
             WHERE guild_id=?
             """,
-            (guild_id,)
+            (
+                guild_id,
+            )
         )
 
         if current:
@@ -243,7 +297,10 @@ class DatabaseManager:
             await self._execute(
                 f"""
                 INSERT INTO guild_settings
-                (guild_id, {col})
+                (
+                    guild_id,
+                    {col}
+                )
                 VALUES (?, ?)
                 """,
                 (
@@ -266,6 +323,7 @@ class DatabaseManager:
         }
 
         if col not in allowed_columns:
+
             raise ValueError(
                 f"Invalid guild config column: {col}"
             )
@@ -281,21 +339,46 @@ class DatabaseManager:
             )
         )
 
-        return result[0] if result else None
+        return (
+            result[0]
+            if result
+            else None
+        )
 
     # ==========================================================================
-    # XP
+    # XP / Level - v30
     # ==========================================================================
+
+    @staticmethod
+    def required_xp(
+        level: int
+    ) -> int:
+
+        """
+        現在レベルから次レベルまでに必要なXP
+
+        Lv.1 -> 100 XP
+        Lv.2 -> 200 XP
+        Lv.3 -> 300 XP
+        ...
+        """
+
+        return max(
+            100,
+            level * 100
+        )
 
     async def add_xp(
         self,
         user_id: int,
-        amount: int = 10
-    ) -> bool:
+        amount: int = Config.XP_PER_MESSAGE
+    ) -> tuple[bool, int, int]:
 
         row = await self._fetchone(
             """
-            SELECT xp, level
+            SELECT
+                xp,
+                level
             FROM users
             WHERE user_id=?
             """,
@@ -304,50 +387,104 @@ class DatabaseManager:
             )
         )
 
-        if row:
+        # ----------------------------------------------------------------------
+        # 初回ユーザー
+        # ----------------------------------------------------------------------
 
-            xp, level = row
+        if not row:
 
-            xp += amount
+            level = 1
+            xp = amount
 
             leveled_up = False
 
-            # v29ではまだ既存仕様を維持
-            if xp >= level * 100:
+            # 大量XPを一気に追加した場合にも対応
+            while xp >= self.required_xp(
+                level
+            ):
 
-                xp = 0
+                needed = self.required_xp(
+                    level
+                )
+
+                xp -= needed
+
                 level += 1
+
                 leveled_up = True
 
             await self._execute(
                 """
-                UPDATE users
-                SET xp=?, level=?
-                WHERE user_id=?
+                INSERT INTO users
+                (
+                    user_id,
+                    xp,
+                    level
+                )
+                VALUES (?, ?, ?)
                 """,
                 (
+                    user_id,
                     xp,
-                    level,
-                    user_id
+                    level
                 )
             )
 
-            return leveled_up
+            return (
+                leveled_up,
+                level,
+                xp
+            )
+
+        # ----------------------------------------------------------------------
+        # 既存ユーザー
+        # ----------------------------------------------------------------------
+
+        xp, level = row
+
+        xp += amount
+
+        leveled_up = False
+
+        # ----------------------------------------------------------------------
+        # v30
+        # XP繰り越し対応
+        # ----------------------------------------------------------------------
+
+        while xp >= self.required_xp(
+            level
+        ):
+
+            needed = self.required_xp(
+                level
+            )
+
+            xp -= needed
+
+            level += 1
+
+            leveled_up = True
 
         await self._execute(
             """
-            INSERT INTO users
-            (user_id, xp, level)
-            VALUES (?, ?, ?)
+            UPDATE users
+            SET
+                xp=?,
+                level=?
+            WHERE user_id=?
             """,
             (
-                user_id,
-                amount,
-                1
+                xp,
+                level,
+                user_id
             )
         )
 
-        return False
+        return (
+            leveled_up,
+            level,
+            xp
+        )
 
     async def get_user_data(
         self,
@@ -356,7 +493,9 @@ class DatabaseManager:
 
         result = await self._fetchone(
             """
-            SELECT level, xp
+            SELECT
+                level,
+                xp
             FROM users
             WHERE user_id=?
             """,
@@ -365,7 +504,55 @@ class DatabaseManager:
             )
         )
 
-        return result if result else (1, 0)
+        if result:
+
+            return result
+
+        return (
+            1,
+            0
+        )
+
+    async def get_level_info(
+        self,
+        user_id: int
+    ):
+
+        level, xp = await self.get_user_data(
+            user_id
+        )
+
+        required = self.required_xp(
+            level
+        )
+
+        remaining = max(
+            0,
+            required - xp
+        )
+
+        percentage = (
+            xp / required * 100
+            if required > 0
+            else 0
+        )
+
+        # 念のため表示が100%を超えないよう制限
+        percentage = max(
+            0.0,
+            min(
+                percentage,
+                100.0
+            )
+        )
+
+        return {
+            "level": level,
+            "xp": xp,
+            "required_xp": required,
+            "remaining_xp": remaining,
+            "percentage": percentage,
+        }
 
     async def get_leaderboard(
         self,
@@ -374,9 +561,14 @@ class DatabaseManager:
 
         return await self._fetchall(
             """
-            SELECT user_id, level, xp
+            SELECT
+                user_id,
+                level,
+                xp
             FROM users
-            ORDER BY level DESC, xp DESC
+            ORDER BY
+                level DESC,
+                xp DESC
             LIMIT ?
             """,
             (
@@ -419,6 +611,7 @@ class DatabaseManager:
         )
 
         if count >= Config.DAILY_LIMIT:
+
             return False
 
         if row:
@@ -441,7 +634,11 @@ class DatabaseManager:
             await self._execute(
                 """
                 INSERT INTO usage_log
-                (user_id, date, count)
+                (
+                    user_id,
+                    date,
+                    count
+                )
                 VALUES (?, ?, 1)
                 """,
                 (
@@ -472,7 +669,9 @@ class DatabaseManager:
 
         end_time = (
             datetime.now(JST)
-            + timedelta(minutes=minutes)
+            + timedelta(
+                minutes=minutes
+            )
         ).isoformat()
 
         await self._execute(
@@ -495,7 +694,7 @@ class DatabaseManager:
         )
 
     # ==========================================================================
-    # ★ v29 Conversation Memory
+    # Conversation Memory - v29 / v30
     # ==========================================================================
 
     async def add_conversation_message(
@@ -509,16 +708,18 @@ class DatabaseManager:
 
         if role not in {
             "user",
-            "assistant"
+            "assistant",
         }:
+
             raise ValueError(
                 "Invalid conversation role."
             )
 
         if not content:
+
             return
 
-        # 異常に長い履歴をDBへ保存しない
+        # DB肥大化防止
         content = content[:4000]
 
         created_at = datetime.now(
@@ -556,9 +757,20 @@ class DatabaseManager:
         limit: int = Config.MEMORY_MESSAGE_LIMIT
     ):
 
+        # 念のため異常値防止
+        limit = max(
+            1,
+            min(
+                int(limit),
+                100
+            )
+        )
+
         rows = await self._fetchall(
             """
-            SELECT role, content
+            SELECT
+                role,
+                content
             FROM conversation_history
             WHERE guild_id=?
             AND channel_id=?
@@ -574,7 +786,8 @@ class DatabaseManager:
             )
         )
 
-        # DESCで取ったので古い→新しいに戻す
+        # DESCで新しい順に取得したので
+        # AIへ渡す前に古い順へ戻す
         rows.reverse()
 
         return [
@@ -582,7 +795,8 @@ class DatabaseManager:
                 "role": role,
                 "content": content
             }
-            for role, content in rows
+            for role, content
+            in rows
         ]
 
     async def count_conversation_history(
@@ -608,7 +822,7 @@ class DatabaseManager:
         )
 
         return (
-            row[0]
+            int(row[0])
             if row
             else 0
         )
@@ -662,7 +876,7 @@ class DatabaseManager:
         )
 
         count = (
-            row[0]
+            int(row[0])
             if row
             else 0
         )
@@ -686,9 +900,16 @@ class DatabaseManager:
         days: int = Config.MEMORY_RETENTION_DAYS
     ) -> int:
 
+        days = max(
+            1,
+            int(days)
+        )
+
         cutoff = (
             datetime.now(JST)
-            - timedelta(days=days)
+            - timedelta(
+                days=days
+            )
         ).isoformat()
 
         row = await self._fetchone(
@@ -703,12 +924,12 @@ class DatabaseManager:
         )
 
         count = (
-            row[0]
+            int(row[0])
             if row
             else 0
         )
 
-        if count:
+        if count > 0:
 
             await self._execute(
                 """
