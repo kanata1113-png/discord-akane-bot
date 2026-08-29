@@ -8,8 +8,10 @@ from discord.ext import commands
 from ai_manager import AiManager
 from config import Config
 from database import DatabaseManager
+from db_facade import DatabaseFacade
 from db_migrations import LATEST_SCHEMA_VERSION, run_migrations
 from repositories import RepositoryRegistry
+from services import ServiceRegistry
 from views.event_view import EventView
 from views.ticket_view import TicketCloseView, TicketView
 
@@ -34,9 +36,17 @@ class AkaneBot(commands.Bot):
             help_command=None,
         )
 
-        self.db = DatabaseManager(Config.DB_NAME)
+        self.legacy_db = DatabaseManager(Config.DB_NAME)
         self.repositories = RepositoryRegistry(Config.DB_NAME)
         self.repos = self.repositories
+        self.services = ServiceRegistry(
+            repositories=self.repositories,
+            legacy_db=self.legacy_db,
+        )
+        self.db = DatabaseFacade(
+            legacy=self.legacy_db,
+            services=self.services,
+        )
         self.ai = AiManager()
 
     async def setup_hook(self):
