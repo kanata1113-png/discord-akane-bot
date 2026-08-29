@@ -25,10 +25,6 @@ class DatabaseManager:
             self.path
         ) as db:
 
-            # ==================================================================
-            # AI Usage
-            # ==================================================================
-
             await db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS usage_log (
@@ -40,10 +36,6 @@ class DatabaseManager:
                 """
             )
 
-            # ==================================================================
-            # Starboard
-            # ==================================================================
-
             await db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS starboard_log (
@@ -51,10 +43,6 @@ class DatabaseManager:
                 )
                 """
             )
-
-            # ==================================================================
-            # Guild Settings
-            # ==================================================================
 
             await db.execute(
                 """
@@ -68,10 +56,6 @@ class DatabaseManager:
                 """
             )
 
-            # ==================================================================
-            # Users / XP
-            # ==================================================================
-
             await db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS users (
@@ -81,10 +65,6 @@ class DatabaseManager:
                 )
                 """
             )
-
-            # ==================================================================
-            # Level Rewards
-            # ==================================================================
 
             await db.execute(
                 """
@@ -97,10 +77,6 @@ class DatabaseManager:
                 """
             )
 
-            # ==================================================================
-            # Reaction Roles
-            # ==================================================================
-
             await db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS reaction_roles (
@@ -111,10 +87,6 @@ class DatabaseManager:
                 """
             )
 
-            # ==================================================================
-            # NG Words
-            # ==================================================================
-
             await db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS ng_words (
@@ -123,10 +95,6 @@ class DatabaseManager:
                 )
                 """
             )
-
-            # ==================================================================
-            # Auto Replies
-            # ==================================================================
 
             await db.execute(
                 """
@@ -137,10 +105,6 @@ class DatabaseManager:
                 )
                 """
             )
-
-            # ==================================================================
-            # Reminders
-            # ==================================================================
 
             await db.execute(
                 """
@@ -154,10 +118,6 @@ class DatabaseManager:
                 """
             )
 
-            # ==================================================================
-            # Monthly Rules
-            # ==================================================================
-
             await db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS monthly_rules (
@@ -167,10 +127,6 @@ class DatabaseManager:
                 )
                 """
             )
-
-            # ==================================================================
-            # AI Conversation Memory
-            # ==================================================================
 
             await db.execute(
                 """
@@ -199,10 +155,6 @@ class DatabaseManager:
                 """
             )
 
-            # ==================================================================
-            # V31 Tickets
-            # ==================================================================
-
             await db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS tickets (
@@ -230,10 +182,6 @@ class DatabaseManager:
                 """
             )
 
-            # ==================================================================
-            # V32 User Stats
-            # ==================================================================
-
             await db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS user_stats (
@@ -253,10 +201,6 @@ class DatabaseManager:
                 """
             )
 
-            # ==================================================================
-            # V32 Achievements
-            # ==================================================================
-
             await db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS user_achievements (
@@ -272,10 +216,6 @@ class DatabaseManager:
                 )
                 """
             )
-
-            # ==================================================================
-            # V32 Titles
-            # ==================================================================
 
             await db.execute(
                 """
@@ -294,10 +234,6 @@ class DatabaseManager:
                 """
             )
 
-            # ==================================================================
-            # V32 Daily Fortune
-            # ==================================================================
-
             await db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS daily_fortunes (
@@ -312,6 +248,39 @@ class DatabaseManager:
                         user_id,
                         fortune_date
                     )
+                )
+                """
+            )
+
+            # ==================================================================
+            # V33 Weekly XP
+            # ==================================================================
+
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS weekly_xp (
+                    guild_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    week_key TEXT NOT NULL,
+                    xp INTEGER DEFAULT 0,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (
+                        guild_id,
+                        user_id,
+                        week_key
+                    )
+                )
+                """
+            )
+
+            await db.execute(
+                """
+                CREATE INDEX IF NOT EXISTS
+                idx_weekly_xp_ranking
+                ON weekly_xp (
+                    guild_id,
+                    week_key,
+                    xp
                 )
                 """
             )
@@ -512,18 +481,16 @@ class DatabaseManager:
 
             level = 1
             xp = amount
-
             leveled_up = False
 
             while xp >= self.required_xp(
                 level
             ):
 
-                needed = self.required_xp(
+                xp -= self.required_xp(
                     level
                 )
 
-                xp -= needed
                 level += 1
                 leveled_up = True
 
@@ -560,11 +527,10 @@ class DatabaseManager:
             level
         ):
 
-            needed = self.required_xp(
+            xp -= self.required_xp(
                 level
             )
 
-            xp -= needed
             level += 1
             leveled_up = True
 
@@ -796,7 +762,7 @@ class DatabaseManager:
         )
 
     # ==========================================================================
-    # AI Conversation Memory
+    # Conversation Memory
     # ==========================================================================
 
     async def add_conversation_message(
@@ -1042,7 +1008,7 @@ class DatabaseManager:
         return count
 
     # ==========================================================================
-    # V31 Ticket
+    # Ticket
     # ==========================================================================
 
     async def get_open_ticket(
@@ -1198,7 +1164,7 @@ class DatabaseManager:
         )
 
     # ==========================================================================
-    # V32 User Stats
+    # User Stats
     # ==========================================================================
 
     async def ensure_user_stats(
@@ -1436,24 +1402,16 @@ class DatabaseManager:
         )
 
         return {
-            "message_count": int(
-                row[0]
-            ),
-            "ai_chat_count": int(
-                row[1]
-            ),
-            "fortune_count": int(
-                row[2]
-            ),
-            "ticket_count": int(
-                row[3]
-            ),
+            "message_count": int(row[0]),
+            "ai_chat_count": int(row[1]),
+            "fortune_count": int(row[2]),
+            "ticket_count": int(row[3]),
             "first_seen": row[4],
             "last_seen": row[5],
         }
 
     # ==========================================================================
-    # V32 Achievements
+    # Achievements
     # ==========================================================================
 
     async def has_achievement(
@@ -1574,7 +1532,7 @@ class DatabaseManager:
         )
 
     # ==========================================================================
-    # V32 Titles
+    # Titles
     # ==========================================================================
 
     async def has_title(
@@ -1646,7 +1604,6 @@ class DatabaseManager:
             )
         )
 
-        # 初称号なら自動装備
         equipped = await self.get_equipped_title(
             guild_id,
             user_id
@@ -1764,7 +1721,7 @@ class DatabaseManager:
             await db.commit()
 
     # ==========================================================================
-    # V32 Fortune
+    # Fortune
     # ==========================================================================
 
     async def get_today_fortune(
@@ -1838,7 +1795,7 @@ class DatabaseManager:
         )
 
     # ==========================================================================
-    # V32 Automatic Unlock Evaluation
+    # Automatic Unlock Evaluation
     # ==========================================================================
 
     async def evaluate_progress_unlocks(
@@ -1858,10 +1815,6 @@ class DatabaseManager:
 
         new_achievements = []
         new_titles = []
-
-        # ======================================================================
-        # Achievement Conditions
-        # ======================================================================
 
         achievement_conditions = [
             (
@@ -1935,10 +1888,6 @@ class DatabaseManager:
                     achievement_key
                 )
 
-        # ======================================================================
-        # Title Conditions
-        # ======================================================================
-
         title_conditions = [
             (
                 "newcomer",
@@ -2011,3 +1960,283 @@ class DatabaseManager:
             "achievements": new_achievements,
             "titles": new_titles,
         }
+
+    # ==========================================================================
+    # V33 Week Helper
+    # ==========================================================================
+
+    @staticmethod
+    def current_week_key() -> str:
+
+        now = datetime.now(
+            JST
+        )
+
+        iso = now.isocalendar()
+
+        return (
+            f"{iso.year}-W"
+            f"{iso.week:02d}"
+        )
+
+    # ==========================================================================
+    # V33 Weekly XP
+    # ==========================================================================
+
+    async def add_weekly_xp(
+        self,
+        guild_id: int,
+        user_id: int,
+        amount: int
+    ) -> int:
+
+        week_key = (
+            self.current_week_key()
+        )
+
+        now = datetime.now(
+            JST
+        ).isoformat()
+
+        await self._execute(
+            """
+            INSERT INTO weekly_xp
+            (
+                guild_id,
+                user_id,
+                week_key,
+                xp,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT (
+                guild_id,
+                user_id,
+                week_key
+            )
+            DO UPDATE SET
+                xp=xp+excluded.xp,
+                updated_at=excluded.updated_at
+            """,
+            (
+                guild_id,
+                user_id,
+                week_key,
+                int(amount),
+                now
+            )
+        )
+
+        row = await self._fetchone(
+            """
+            SELECT xp
+            FROM weekly_xp
+            WHERE guild_id=?
+            AND user_id=?
+            AND week_key=?
+            """,
+            (
+                guild_id,
+                user_id,
+                week_key
+            )
+        )
+
+        return (
+            int(row[0])
+            if row
+            else 0
+        )
+
+    async def get_user_weekly_xp(
+        self,
+        guild_id: int,
+        user_id: int
+    ) -> int:
+
+        week_key = (
+            self.current_week_key()
+        )
+
+        row = await self._fetchone(
+            """
+            SELECT xp
+            FROM weekly_xp
+            WHERE guild_id=?
+            AND user_id=?
+            AND week_key=?
+            """,
+            (
+                guild_id,
+                user_id,
+                week_key
+            )
+        )
+
+        return (
+            int(row[0])
+            if row
+            else 0
+        )
+
+    async def get_weekly_xp_leaderboard(
+        self,
+        guild_id: int,
+        limit: int = Config.RANKING_LIMIT
+    ):
+
+        week_key = (
+            self.current_week_key()
+        )
+
+        return await self._fetchall(
+            """
+            SELECT
+                user_id,
+                xp
+            FROM weekly_xp
+            WHERE guild_id=?
+            AND week_key=?
+            ORDER BY
+                xp DESC,
+                user_id ASC
+            LIMIT ?
+            """,
+            (
+                guild_id,
+                week_key,
+                limit
+            )
+        )
+
+    async def get_weekly_rank(
+        self,
+        guild_id: int,
+        user_id: int
+    ):
+
+        week_key = (
+            self.current_week_key()
+        )
+
+        user_row = await self._fetchone(
+            """
+            SELECT xp
+            FROM weekly_xp
+            WHERE guild_id=?
+            AND user_id=?
+            AND week_key=?
+            """,
+            (
+                guild_id,
+                user_id,
+                week_key
+            )
+        )
+
+        if not user_row:
+
+            return None
+
+        xp = int(
+            user_row[0]
+        )
+
+        row = await self._fetchone(
+            """
+            SELECT
+                COUNT(*) + 1
+            FROM weekly_xp
+            WHERE guild_id=?
+            AND week_key=?
+            AND xp > ?
+            """,
+            (
+                guild_id,
+                week_key,
+                xp
+            )
+        )
+
+        return (
+            int(row[0])
+            if row
+            else None
+        )
+
+    # ==========================================================================
+    # V33 Other Rankings
+    # ==========================================================================
+
+    async def get_message_leaderboard(
+        self,
+        guild_id: int,
+        limit: int = Config.RANKING_LIMIT
+    ):
+
+        return await self._fetchall(
+            """
+            SELECT
+                user_id,
+                message_count
+            FROM user_stats
+            WHERE guild_id=?
+            ORDER BY
+                message_count DESC,
+                user_id ASC
+            LIMIT ?
+            """,
+            (
+                guild_id,
+                limit
+            )
+        )
+
+    async def get_ai_leaderboard(
+        self,
+        guild_id: int,
+        limit: int = Config.RANKING_LIMIT
+    ):
+
+        return await self._fetchall(
+            """
+            SELECT
+                user_id,
+                ai_chat_count
+            FROM user_stats
+            WHERE guild_id=?
+            ORDER BY
+                ai_chat_count DESC,
+                user_id ASC
+            LIMIT ?
+            """,
+            (
+                guild_id,
+                limit
+            )
+        )
+
+    async def get_achievement_leaderboard(
+        self,
+        guild_id: int,
+        limit: int = Config.RANKING_LIMIT
+    ):
+
+        return await self._fetchall(
+            """
+            SELECT
+                user_id,
+                COUNT(*) AS achievement_count
+            FROM user_achievements
+            WHERE guild_id=?
+            GROUP BY user_id
+            ORDER BY
+                achievement_count DESC,
+                user_id ASC
+            LIMIT ?
+            """,
+            (
+                guild_id,
+                limit
+            )
+        )
