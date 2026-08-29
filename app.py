@@ -152,7 +152,7 @@ class AkaneBot(commands.Bot):
             else "unknown"
         )
 
-        logger.error(
+        logger.exception(
             "Global app command error | "
             f"command={command_name} | "
             f"user={interaction.user.id} | "
