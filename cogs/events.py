@@ -3,7 +3,7 @@ import logging
 import re
 
 from collections import defaultdict, deque
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 
 import discord
 from discord.ext import commands, tasks
@@ -21,23 +21,31 @@ class EventsCog(commands.Cog):
         self.bot = bot
 
         # ======================================================================
-        # Spam Check
+        # Spam Protection
         # ======================================================================
 
         self.spam_check = defaultdict(
             lambda: deque(
-                maxlen=5
+                maxlen=Config.SPAM_MESSAGE_THRESHOLD
             )
         )
 
+        self.duplicate_check = defaultdict(
+            lambda: deque(
+                maxlen=Config.DUPLICATE_MESSAGE_THRESHOLD
+            )
+        )
+
+        self.spam_strikes = {}
+
         # ======================================================================
-        # v30 XP Cooldown
+        # XP Cooldown
         # ======================================================================
 
         self.xp_last_award = {}
 
     # ==========================================================================
-    # Cog lifecycle
+    # Cog Lifecycle
     # ==========================================================================
 
     async def cog_load(self):
@@ -59,6 +67,172 @@ class EventsCog(commands.Cog):
         logger.info(
             "EventsCog background tasks stopped."
         )
+
+    # ==========================================================================
+    # Spam Helper - V31
+    # ==========================================================================
+
+    async def handle_spam(
+        self,
+        message: discord.Message,
+        reason: str
+    ):
+
+        if not isinstance(
+            message.author,
+            discord.Member
+        ):
+
+            return
+
+        if (
+            message.author
+            .guild_permissions
+            .administrator
+        ):
+
+            return
+
+        key = (
+            message.guild.id,
+            message.author.id
+        )
+
+        now = datetime.now().timestamp()
+
+        strike_data = self.spam_strikes.get(
+            key
+        )
+
+        if (
+            not strike_data
+            or (
+                now
+                - strike_data["last"]
+                > Config.SPAM_STRIKE_RESET_SECONDS
+            )
+        ):
+
+            strike = 1
+
+        else:
+
+            strike = (
+                strike_data["count"]
+                + 1
+            )
+
+        self.spam_strikes[
+            key
+        ] = {
+            "count": strike,
+            "last": now,
+        }
+
+        logger.warning(
+            "Spam detected | "
+            f"guild={message.guild.id} | "
+            f"user={message.author.id} | "
+            f"strike={strike} | "
+            f"reason={reason}"
+        )
+
+        # ======================================================================
+        # Strike 1
+        # ======================================================================
+
+        if strike == 1:
+
+            try:
+
+                await message.channel.send(
+                    f"⚠️ {message.author.mention} "
+                    "連投っぽいで。"
+                    "少しゆっくり頼むわ！\n"
+                    f"理由: **{reason}**",
+                    delete_after=10
+                )
+
+            except Exception as e:
+
+                logger.exception(
+                    f"Spam warning failed: {e}"
+                )
+
+            return
+
+        # ======================================================================
+        # Timeout Duration
+        # ======================================================================
+
+        if strike == 2:
+
+            timeout_seconds = (
+                Config.SPAM_TIMEOUT_1_SECONDS
+            )
+
+        elif strike == 3:
+
+            timeout_seconds = (
+                Config.SPAM_TIMEOUT_2_SECONDS
+            )
+
+        else:
+
+            timeout_seconds = (
+                Config.SPAM_TIMEOUT_3_SECONDS
+            )
+
+        # ======================================================================
+        # Timeout
+        # ======================================================================
+
+        try:
+
+            await message.author.timeout(
+                timedelta(
+                    seconds=timeout_seconds
+                ),
+                reason=(
+                    "Akane Bot Spam Protection | "
+                    f"Strike {strike} | "
+                    f"{reason}"
+                )
+            )
+
+            await message.channel.send(
+                f"🛡️ {message.author.mention} "
+                f"連投対策で **{timeout_seconds}秒** "
+                "Timeoutしたで。\n"
+                f"Strike: **{strike}**\n"
+                f"理由: **{reason}**"
+            )
+
+        except discord.Forbidden:
+
+            logger.warning(
+                "Spam timeout permission denied | "
+                f"user={message.author.id}"
+            )
+
+            try:
+
+                await message.channel.send(
+                    f"⚠️ {message.author.mention} "
+                    "Spamを検知したけど、"
+                    "茜にTimeout権限がないみたいや。\n"
+                    f"Strike: **{strike}**"
+                )
+
+            except Exception:
+
+                pass
+
+        except Exception as e:
+
+            logger.exception(
+                f"Spam timeout failed: {e}"
+            )
 
     # ==========================================================================
     # Reminder Loop
@@ -91,6 +265,7 @@ class EventsCog(commands.Cog):
             )
 
             if not rows:
+
                 return
 
             ids = [
@@ -103,7 +278,6 @@ class EventsCog(commands.Cog):
                 for _ in ids
             )
 
-            # 先に削除
             await self.bot.db._execute(
                 f"""
                 DELETE FROM reminders
@@ -143,7 +317,7 @@ class EventsCog(commands.Cog):
                 except discord.Forbidden:
 
                     logger.warning(
-                        "Reminder send permission denied | "
+                        "Reminder permission denied | "
                         f"channel={channel_id}"
                     )
 
@@ -207,11 +381,6 @@ class EventsCog(commands.Cog):
 
                 if not channel:
 
-                    logger.warning(
-                        "Monthly target channel not found | "
-                        f"channel={target_id}"
-                    )
-
                     continue
 
                 monthly_message = (
@@ -226,14 +395,6 @@ class EventsCog(commands.Cog):
 
                     await channel.send(
                         monthly_message
-                    )
-
-                except discord.Forbidden:
-
-                    logger.warning(
-                        "Monthly notification "
-                        "permission denied | "
-                        f"channel={target_id}"
                     )
 
                 except Exception as e:
@@ -305,7 +466,6 @@ class EventsCog(commands.Cog):
         message: discord.Message
     ):
 
-        # Bot自身・DMは無視
         if (
             message.author.bot
             or not message.guild
@@ -314,42 +474,131 @@ class EventsCog(commands.Cog):
             return
 
         # ======================================================================
-        # Spam Check
+        # Spam Protection - V31
         # ======================================================================
 
-        now = datetime.now().timestamp()
-
-        spam_history = self.spam_check[
-            message.author.id
-        ]
-
-        spam_history.append(
-            now
-        )
-
-        if (
-            len(spam_history) == 5
-            and spam_history[-1] - spam_history[0] < 5
-            and not message.author
+        if not (
+            message.author
             .guild_permissions
             .administrator
         ):
 
-            try:
+            spam_key = (
+                message.guild.id,
+                message.author.id
+            )
 
-                await message.channel.send(
-                    f"{message.author.mention} "
-                    "連投はやめてな！",
-                    delete_after=5
+            now_timestamp = (
+                datetime.now().timestamp()
+            )
+
+            spam_history = self.spam_check[
+                spam_key
+            ]
+
+            spam_history.append(
+                now_timestamp
+            )
+
+            # ------------------------------------------------------------------
+            # Burst Spam
+            # ------------------------------------------------------------------
+
+            burst_spam = (
+                len(spam_history)
+                >= Config.SPAM_MESSAGE_THRESHOLD
+                and (
+                    spam_history[-1]
+                    - spam_history[0]
+                    <= Config.SPAM_WINDOW_SECONDS
+                )
+            )
+
+            # ------------------------------------------------------------------
+            # Duplicate Spam
+            # ------------------------------------------------------------------
+
+            normalized_content = (
+                message.content
+                .strip()
+                .lower()
+            )
+
+            duplicate_history = (
+                self.duplicate_check[
+                    spam_key
+                ]
+            )
+
+            if normalized_content:
+
+                duplicate_history.append(
+                    normalized_content
                 )
 
-            except Exception as e:
+            duplicate_spam = (
+                normalized_content
+                and len(
+                    duplicate_history
+                )
+                >= Config.DUPLICATE_MESSAGE_THRESHOLD
+                and len(
+                    set(
+                        duplicate_history
+                    )
+                )
+                == 1
+            )
 
-                logger.exception(
-                    f"Spam warning failed: {e}"
+            # ------------------------------------------------------------------
+            # Mass Mention
+            # ------------------------------------------------------------------
+
+            unique_mentions = {
+                member.id
+                for member
+                in message.mentions
+            }
+
+            mass_mention = (
+                len(
+                    unique_mentions
+                )
+                >= Config.MASS_MENTION_THRESHOLD
+            )
+
+            # ------------------------------------------------------------------
+            # Handle
+            # ------------------------------------------------------------------
+
+            spam_reason = None
+
+            if mass_mention:
+
+                spam_reason = (
+                    "大量メンション"
                 )
 
-            return
+            elif duplicate_spam:
+
+                spam_reason = (
+                    "同じ文章の連投"
+                )
+
+            elif burst_spam:
+
+                spam_reason = (
+                    "短時間の大量投稿"
+                )
+
+            if spam_reason:
+
+                await self.handle_spam(
+                    message,
+                    spam_reason
+                )
+
+                return
 
         # ======================================================================
         # NG Words
@@ -387,14 +636,14 @@ class EventsCog(commands.Cog):
                     except discord.Forbidden:
 
                         logger.warning(
-                            "NG word moderation "
+                            "NG moderation "
                             "permission denied."
                         )
 
                     except Exception as e:
 
                         logger.exception(
-                            "NG word moderation failed | "
+                            "NG moderation failed | "
                             f"error={e}"
                         )
 
@@ -440,7 +689,7 @@ class EventsCog(commands.Cog):
             )
 
         # ======================================================================
-        # AI Chat - v29 Memory + Model Routing
+        # AI Chat
         # ======================================================================
 
         try:
@@ -470,7 +719,6 @@ class EventsCog(commands.Cog):
                     message.content
                 ).strip()
 
-                # メンションだけならAPIを呼ばない
                 if clean_text:
 
                     allowed = (
@@ -490,10 +738,6 @@ class EventsCog(commands.Cog):
                         )
 
                     else:
-
-                        # ======================================================
-                        # 過去会話
-                        # ======================================================
 
                         conversation_history = (
                             await self.bot.db
@@ -522,18 +766,14 @@ class EventsCog(commands.Cog):
                                 reply,
                                 selected_model,
                                 route
-                            ) = (
-                                await self.bot.ai.chat(
-                                    user_name=(
-                                        message.author
-                                        .display_name
-                                    ),
-                                    content=(
-                                        clean_text
-                                    ),
-                                    history=(
-                                        conversation_history
-                                    )
+                            ) = await self.bot.ai.chat(
+                                user_name=(
+                                    message.author
+                                    .display_name
+                                ),
+                                content=clean_text,
+                                history=(
+                                    conversation_history
                                 )
                             )
 
@@ -545,10 +785,6 @@ class EventsCog(commands.Cog):
                             reply = (
                                 Config.EMPTY_MSG
                             )
-
-                        # ======================================================
-                        # 正常応答のみ履歴保存
-                        # ======================================================
 
                         error_responses = {
                             Config.ERROR_MSG,
@@ -574,9 +810,7 @@ class EventsCog(commands.Cog):
                                         message.author.id
                                     ),
                                     role="user",
-                                    content=(
-                                        clean_text
-                                    )
+                                    content=clean_text
                                 )
                             )
 
@@ -606,10 +840,6 @@ class EventsCog(commands.Cog):
                             f"{len(conversation_history)}"
                         )
 
-                        # ======================================================
-                        # Discord文字数対策
-                        # ======================================================
-
                         if len(reply) > 1900:
 
                             file = discord.File(
@@ -638,14 +868,12 @@ class EventsCog(commands.Cog):
             )
 
         # ======================================================================
-        # XP - v30
+        # XP
         # ======================================================================
 
         try:
 
-            user_id = (
-                message.author.id
-            )
+            user_id = message.author.id
 
             now_timestamp = (
                 datetime.now().timestamp()
@@ -672,43 +900,27 @@ class EventsCog(commands.Cog):
                     leveled_up,
                     level_value,
                     current_xp
-                ) = (
-                    await self.bot.db.add_xp(
-                        user_id,
-                        Config.XP_PER_MESSAGE
-                    )
+                ) = await self.bot.db.add_xp(
+                    user_id,
+                    Config.XP_PER_MESSAGE
                 )
 
-                # XP付与に成功したときだけ保存
                 self.xp_last_award[
                     user_id
                 ] = now_timestamp
 
-                logger.debug(
-                    "XP awarded | "
-                    f"user={user_id} | "
-                    f"level={level_value} | "
-                    f"xp={current_xp}"
-                )
-
-                # ==============================================================
-                # Level Up
-                # ==============================================================
-
                 if leveled_up:
 
-                    rewards = (
-                        await self.bot.db._fetchall(
-                            """
-                            SELECT role_id
-                            FROM level_rewards
-                            WHERE guild_id=?
-                            AND level<=?
-                            """,
-                            (
-                                message.guild.id,
-                                level_value
-                            )
+                    rewards = await self.bot.db._fetchall(
+                        """
+                        SELECT role_id
+                        FROM level_rewards
+                        WHERE guild_id=?
+                        AND level<=?
+                        """,
+                        (
+                            message.guild.id,
+                            level_value
                         )
                     )
 
@@ -716,21 +928,15 @@ class EventsCog(commands.Cog):
                         role_id,
                     ) in rewards:
 
-                        role = (
-                            message.guild.get_role(
-                                role_id
-                            )
+                        role = message.guild.get_role(
+                            role_id
                         )
 
                         if not role:
 
                             continue
 
-                        # すでに持っているロールならスキップ
-                        if (
-                            role
-                            in message.author.roles
-                        ):
+                        if role in message.author.roles:
 
                             continue
 
@@ -742,13 +948,6 @@ class EventsCog(commands.Cog):
                                     "Akane Bot "
                                     "level reward"
                                 )
-                            )
-
-                            logger.info(
-                                "Level reward granted | "
-                                f"user={user_id} | "
-                                f"role={role_id} | "
-                                f"level={level_value}"
                             )
 
                         except discord.Forbidden:
@@ -766,10 +965,6 @@ class EventsCog(commands.Cog):
                                 f"role={role_id} | "
                                 f"error={e}"
                             )
-
-                    # ==========================================================
-                    # Level-up Message
-                    # ==========================================================
 
                     try:
 
@@ -846,8 +1041,7 @@ class EventsCog(commands.Cog):
             ):
 
                 role = (
-                    payload
-                    .member
+                    payload.member
                     .guild
                     .get_role(
                         row[0]
@@ -856,38 +1050,26 @@ class EventsCog(commands.Cog):
 
                 if role:
 
-                    try:
+                    await payload.member.add_roles(
+                        role
+                    )
 
-                        await (
-                            payload.member
-                            .add_roles(
-                                role
-                            )
-                        )
+        except discord.Forbidden:
 
-                    except discord.Forbidden:
-
-                        logger.warning(
-                            "Reaction role add "
-                            "permission denied."
-                        )
-
-                    except Exception as e:
-
-                        logger.exception(
-                            "Reaction role add failed | "
-                            f"error={e}"
-                        )
+            logger.warning(
+                "Reaction role add "
+                "permission denied."
+            )
 
         except Exception as e:
 
             logger.exception(
-                "Reaction role lookup failed | "
+                "Reaction role add failed | "
                 f"error={e}"
             )
 
         # ======================================================================
-        # Translation Reaction
+        # Translation
         # ======================================================================
 
         if (
@@ -899,31 +1081,21 @@ class EventsCog(commands.Cog):
 
             try:
 
-                channel = (
-                    self.bot.get_channel(
-                        payload.channel_id
-                    )
+                channel = self.bot.get_channel(
+                    payload.channel_id
                 )
 
                 if not channel:
 
-                    logger.warning(
-                        "Translation channel "
-                        "not found | "
-                        f"channel="
-                        f"{payload.channel_id}"
-                    )
-
                     return
 
-                message = (
-                    await channel
-                    .fetch_message(
+                source_message = (
+                    await channel.fetch_message(
                         payload.message_id
                     )
                 )
 
-                if not message.content:
+                if not source_message.content:
 
                     return
 
@@ -937,7 +1109,7 @@ class EventsCog(commands.Cog):
 
                 translated = (
                     await self.bot.ai.translate(
-                        message.content,
+                        source_message.content,
                         language
                     )
                 )
@@ -955,13 +1127,7 @@ class EventsCog(commands.Cog):
 
                     return
 
-                # ------------------------------------------------------------------
-                # 長文
-                # ------------------------------------------------------------------
-
-                if len(
-                    translated
-                ) > 4000:
+                if len(translated) > 4000:
 
                     file = discord.File(
                         io.BytesIO(
@@ -970,25 +1136,11 @@ class EventsCog(commands.Cog):
                         filename="trans.txt"
                     )
 
-                    try:
-
-                        await payload.member.send(
-                            "長すぎるから"
-                            "ファイルにするな！",
-                            file=file
-                        )
-
-                    except discord.Forbidden:
-
-                        logger.info(
-                            "Translation DM blocked | "
-                            f"user="
-                            f"{payload.user_id}"
-                        )
-
-                # ------------------------------------------------------------------
-                # Embed
-                # ------------------------------------------------------------------
+                    await payload.member.send(
+                        "長すぎるから"
+                        "ファイルにするな！",
+                        file=file
+                    )
 
                 else:
 
@@ -997,44 +1149,35 @@ class EventsCog(commands.Cog):
                             f"🌐 翻訳 "
                             f"({language})"
                         ),
-                        description=(
-                            translated
-                        ),
-                        color=(
-                            discord.Color
-                            .blue()
-                        )
+                        description=translated,
+                        color=discord.Color.blue()
                     )
 
                     preview = (
-                        message.content[:50]
+                        source_message.content[:50]
                         + "..."
                         if len(
-                            message.content
+                            source_message.content
                         ) > 50
-                        else message.content
+                        else source_message.content
                     )
 
                     embed.set_footer(
                         text=(
-                            f"原文: "
-                            f"{preview}"
+                            f"原文: {preview}"
                         )
                     )
 
-                    try:
+                    await payload.member.send(
+                        embed=embed
+                    )
 
-                        await payload.member.send(
-                            embed=embed
-                        )
+            except discord.Forbidden:
 
-                    except discord.Forbidden:
-
-                        logger.info(
-                            "Translation DM blocked | "
-                            f"user="
-                            f"{payload.user_id}"
-                        )
+                logger.info(
+                    "Translation DM blocked | "
+                    f"user={payload.user_id}"
+                )
 
             except Exception as e:
 
@@ -1056,31 +1199,23 @@ class EventsCog(commands.Cog):
 
             try:
 
-                channel = (
-                    self.bot.get_channel(
-                        payload.channel_id
-                    )
+                channel = self.bot.get_channel(
+                    payload.channel_id
                 )
 
                 if not channel:
 
-                    logger.warning(
-                        "Starboard source channel "
-                        "not found."
-                    )
-
                     return
 
-                message = (
-                    await channel
-                    .fetch_message(
+                source_message = (
+                    await channel.fetch_message(
                         payload.message_id
                     )
                 )
 
                 reaction = (
                     discord.utils.get(
-                        message.reactions,
+                        source_message.reactions,
                         emoji="❤️"
                     )
                 )
@@ -1092,21 +1227,14 @@ class EventsCog(commands.Cog):
 
                     return
 
-                # ------------------------------------------------------------------
-                # すでに投稿済みか
-                # ------------------------------------------------------------------
-
-                posted = (
-                    await self.bot.db
-                    ._fetchone(
-                        """
-                        SELECT message_id
-                        FROM starboard_log
-                        WHERE message_id=?
-                        """,
-                        (
-                            message.id,
-                        )
+                posted = await self.bot.db._fetchone(
+                    """
+                    SELECT message_id
+                    FROM starboard_log
+                    WHERE message_id=?
+                    """,
+                    (
+                        source_message.id,
                     )
                 )
 
@@ -1114,13 +1242,8 @@ class EventsCog(commands.Cog):
 
                     return
 
-                # ------------------------------------------------------------------
-                # Starboard channel
-                # ------------------------------------------------------------------
-
                 starboard_id = (
-                    await self.bot.db
-                    .get_config(
+                    await self.bot.db.get_config(
                         payload.guild_id,
                         "starboard_ch"
                     )
@@ -1138,39 +1261,26 @@ class EventsCog(commands.Cog):
 
                 if not starboard_channel:
 
-                    logger.warning(
-                        "Starboard channel "
-                        "not found | "
-                        f"channel="
-                        f"{starboard_id}"
-                    )
-
                     return
-
-                # ------------------------------------------------------------------
-                # Embed
-                # ------------------------------------------------------------------
 
                 embed = discord.Embed(
                     description=(
-                        message.content
+                        source_message.content
                         or "(本文なし)"
                     ),
-                    color=(
-                        discord.Color.red()
-                    ),
+                    color=discord.Color.red(),
                     timestamp=(
-                        message.created_at
+                        source_message.created_at
                     )
                 )
 
                 embed.set_author(
                     name=(
-                        message.author
+                        source_message.author
                         .display_name
                     ),
                     icon_url=(
-                        message.author
+                        source_message.author
                         .display_avatar
                         .url
                     )
@@ -1180,27 +1290,24 @@ class EventsCog(commands.Cog):
                     name="Original",
                     value=(
                         f"[Jump]"
-                        f"({message.jump_url})"
+                        f"({source_message.jump_url})"
                     )
                 )
 
-                if message.attachments:
+                if source_message.attachments:
 
                     embed.set_image(
                         url=(
-                            message.attachments[
-                                0
-                            ].url
+                            source_message
+                            .attachments[0]
+                            .url
                         )
                     )
 
-                await (
-                    starboard_channel
-                    .send(
-                        "いいねがたくさん。"
-                        "殿堂入りやね！（茜）",
-                        embed=embed
-                    )
+                await starboard_channel.send(
+                    "いいねがたくさん。"
+                    "殿堂入りやね！（茜）",
+                    embed=embed
                 )
 
                 await self.bot.db._execute(
@@ -1210,14 +1317,8 @@ class EventsCog(commands.Cog):
                     VALUES (?)
                     """,
                     (
-                        message.id,
+                        source_message.id,
                     )
-                )
-
-            except discord.Forbidden:
-
-                logger.warning(
-                    "Starboard permission denied."
                 )
 
             except Exception as e:
@@ -1258,26 +1359,20 @@ class EventsCog(commands.Cog):
 
                 return
 
-            guild = (
-                self.bot.get_guild(
-                    payload.guild_id
-                )
+            guild = self.bot.get_guild(
+                payload.guild_id
             )
 
             if not guild:
 
                 return
 
-            member = (
-                guild.get_member(
-                    payload.user_id
-                )
+            member = guild.get_member(
+                payload.user_id
             )
 
-            role = (
-                guild.get_role(
-                    row[0]
-                )
+            role = guild.get_role(
+                row[0]
             )
 
             if (
@@ -1285,39 +1380,26 @@ class EventsCog(commands.Cog):
                 and role
             ):
 
-                try:
+                await member.remove_roles(
+                    role
+                )
 
-                    await member.remove_roles(
-                        role,
-                        reason=(
-                            "Akane Bot "
-                            "reaction role removed"
-                        )
-                    )
+        except discord.Forbidden:
 
-                except discord.Forbidden:
-
-                    logger.warning(
-                        "Reaction role remove "
-                        "permission denied."
-                    )
-
-                except Exception as e:
-
-                    logger.exception(
-                        "Reaction role remove failed | "
-                        f"error={e}"
-                    )
+            logger.warning(
+                "Reaction role remove "
+                "permission denied."
+            )
 
         except Exception as e:
 
             logger.exception(
-                "Reaction remove processing failed | "
+                "Reaction remove failed | "
                 f"error={e}"
             )
 
     # ==========================================================================
-    # Message Delete Log
+    # Deleted Message Log
     # ==========================================================================
 
     @commands.Cog.listener()
@@ -1335,23 +1417,17 @@ class EventsCog(commands.Cog):
 
         try:
 
-            log_id = (
-                await self.bot.db
-                .get_config(
-                    message.guild.id,
-                    "log_ch"
-                )
+            log_id = await self.bot.db.get_config(
+                message.guild.id,
+                "log_ch"
             )
 
             if not log_id:
 
                 return
 
-            channel = (
-                message.guild
-                .get_channel(
-                    log_id
-                )
+            channel = message.guild.get_channel(
+                log_id
             )
 
             if not channel:
@@ -1364,38 +1440,24 @@ class EventsCog(commands.Cog):
                     message.content
                     or "(本文なし)"
                 ),
-                color=(
-                    discord.Color.red()
-                )
+                color=discord.Color.red()
             )
 
             embed.set_author(
-                name=(
-                    message.author
-                    .display_name
-                ),
+                name=message.author.display_name,
                 icon_url=(
                     message.author
-                    .display_avatar
-                    .url
+                    .display_avatar.url
                 )
             )
 
             embed.add_field(
                 name="場所",
-                value=(
-                    message.channel.mention
-                )
+                value=message.channel.mention
             )
 
             await channel.send(
                 embed=embed
-            )
-
-        except discord.Forbidden:
-
-            logger.warning(
-                "Delete log permission denied."
             )
 
         except Exception as e:
@@ -1405,7 +1467,7 @@ class EventsCog(commands.Cog):
             )
 
     # ==========================================================================
-    # Voice State Log
+    # Voice Log
     # ==========================================================================
 
     @commands.Cog.listener()
@@ -1416,32 +1478,23 @@ class EventsCog(commands.Cog):
         after
     ):
 
-        if (
-            before.channel
-            == after.channel
-        ):
+        if before.channel == after.channel:
 
             return
 
         try:
 
-            log_id = (
-                await self.bot.db
-                .get_config(
-                    member.guild.id,
-                    "log_ch"
-                )
+            log_id = await self.bot.db.get_config(
+                member.guild.id,
+                "log_ch"
             )
 
             if not log_id:
 
                 return
 
-            channel = (
-                member.guild
-                .get_channel(
-                    log_id
-                )
+            channel = member.guild.get_channel(
+                log_id
             )
 
             if not channel:
@@ -1477,17 +1530,8 @@ class EventsCog(commands.Cog):
                         f"{member.mention} "
                         f"{description}"
                     ),
-                    color=(
-                        discord.Color
-                        .green()
-                    )
+                    color=discord.Color.green()
                 )
-            )
-
-        except discord.Forbidden:
-
-            logger.warning(
-                "Voice log permission denied."
             )
 
         except Exception as e:
@@ -1509,8 +1553,7 @@ class EventsCog(commands.Cog):
         try:
 
             welcome_id = (
-                await self.bot.db
-                .get_config(
+                await self.bot.db.get_config(
                     member.guild.id,
                     "welcome_ch"
                 )
@@ -1521,8 +1564,7 @@ class EventsCog(commands.Cog):
                 return
 
             channel = (
-                member.guild
-                .get_channel(
+                member.guild.get_channel(
                     welcome_id
                 )
             )
@@ -1540,16 +1582,64 @@ class EventsCog(commands.Cog):
                 "ゆっくりしていってな！"
             )
 
-        except discord.Forbidden:
+        except Exception as e:
 
-            logger.warning(
-                "Welcome message permission denied."
+            logger.exception(
+                f"Welcome message failed: {e}"
+            )
+
+    # ==========================================================================
+    # V31 Ticket Channel Manual Delete
+    # ==========================================================================
+
+    @commands.Cog.listener()
+    async def on_guild_channel_delete(
+        self,
+        channel
+    ):
+
+        if not isinstance(
+            channel,
+            discord.TextChannel
+        ):
+
+            return
+
+        try:
+
+            ticket = (
+                await self.bot.db
+                .get_ticket_by_channel(
+                    channel.id
+                )
+            )
+
+            if not ticket:
+
+                return
+
+            status = ticket[4]
+
+            if status != "open":
+
+                return
+
+            await self.bot.db.close_ticket(
+                channel.id
+            )
+
+            logger.info(
+                "Ticket DB repaired after "
+                "manual channel deletion | "
+                f"guild={channel.guild.id} | "
+                f"channel={channel.id}"
             )
 
         except Exception as e:
 
             logger.exception(
-                f"Welcome message failed: {e}"
+                "Ticket manual-delete cleanup "
+                f"failed: {e}"
             )
 
 
