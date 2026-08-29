@@ -517,16 +517,37 @@ class GeneralCog(commands.Cog):
         interaction: discord.Interaction
     ):
 
-        level_value, xp = (
-            await self.bot.db.get_user_data(
-                interaction.user.id
-            )
-        )
+        try:
 
-        await interaction.response.send_message(
-            f"📊 Lv.{level_value} (XP: {xp})",
-            ephemeral=True
-        )
+            info = (
+                await self.bot.db
+                .get_level_info(
+                    interaction.user.id
+                )
+            )
+
+            await interaction.response.send_message(
+                (
+                    f"📊 **Lv.{info['level']}**\n"
+                    f"✨ XP: "
+                    f"**{info['xp']} / "
+                    f"{info['required_xp']}**\n"
+                    f"🎯 次まであと "
+                    f"**{info['remaining_xp']} XP**"
+                ),
+                ephemeral=True
+            )
+
+        except Exception as e:
+
+            logger.exception(
+                f"/level failed: {e}"
+            )
+
+            await interaction.response.send_message(
+                "レベル情報を取得できへんかったわ。",
+                ephemeral=True
+            )
 
     # ==========================================================================
     # Leaderboard
@@ -798,6 +819,151 @@ class GeneralCog(commands.Cog):
 
             await interaction.response.send_message(
                 "履歴削除中にエラーが起きたで。",
+                ephemeral=True
+            )
+
+    # ==========================================================================
+    # Profile - v30
+    # ==========================================================================
+
+    @app_commands.command(
+        name="profile",
+        description="自分のプロフィール・レベル情報を表示"
+    )
+    async def profile(
+        self,
+        interaction: discord.Interaction
+    ):
+
+        try:
+
+            info = (
+                await self.bot.db
+                .get_level_info(
+                    interaction.user.id
+                )
+            )
+
+            level = info[
+                "level"
+            ]
+
+            xp = info[
+                "xp"
+            ]
+
+            required = info[
+                "required_xp"
+            ]
+
+            remaining = info[
+                "remaining_xp"
+            ]
+
+            percentage = info[
+                "percentage"
+            ]
+
+            # ==============================================================
+            # XP Progress Bar
+            # ==============================================================
+
+            bar_length = 10
+
+            filled = int(
+                percentage
+                / 100
+                * bar_length
+            )
+
+            filled = max(
+                0,
+                min(
+                    filled,
+                    bar_length
+                )
+            )
+
+            progress_bar = (
+                "🟩" * filled
+                + "⬜" * (
+                    bar_length
+                    - filled
+                )
+            )
+
+            embed = discord.Embed(
+                title=(
+                    f"🌸 "
+                    f"{interaction.user.display_name}"
+                    f" のプロフィール"
+                ),
+                color=discord.Color.pink()
+            )
+
+            embed.set_thumbnail(
+                url=(
+                    interaction.user
+                    .display_avatar
+                    .url
+                )
+            )
+
+            embed.add_field(
+                name="📊 レベル",
+                value=(
+                    f"**Lv.{level}**"
+                ),
+                inline=True
+            )
+
+            embed.add_field(
+                name="✨ XP",
+                value=(
+                    f"**{xp} / {required}**"
+                ),
+                inline=True
+            )
+
+            embed.add_field(
+                name="🎯 次のレベルまで",
+                value=(
+                    f"あと **{remaining} XP**"
+                ),
+                inline=True
+            )
+
+            embed.add_field(
+                name="進行度",
+                value=(
+                    f"{progress_bar}\n"
+                    f"{percentage:.1f}%"
+                ),
+                inline=False
+            )
+
+            embed.set_footer(
+                text=(
+                    f"XPは約"
+                    f"{Config.XP_COOLDOWN_SECONDS}秒に"
+                    "1回獲得できるで！"
+                )
+            )
+
+            await interaction.response.send_message(
+                embed=embed,
+                ephemeral=True
+            )
+
+        except Exception as e:
+
+            logger.exception(
+                f"/profile failed: {e}"
+            )
+
+            await interaction.response.send_message(
+                "プロフィール取得中に"
+                "エラーが起きたで。",
                 ephemeral=True
             )
 
