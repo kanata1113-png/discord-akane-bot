@@ -15,7 +15,7 @@ logger = logging.getLogger(
 
 
 # ==============================================================================
-# Helpers
+# Helper
 # ==============================================================================
 
 def safe_channel_name(
@@ -47,6 +47,10 @@ def safe_channel_name(
     return result[:30]
 
 
+# ==============================================================================
+# Transcript
+# ==============================================================================
+
 async def create_transcript(
     channel: discord.TextChannel
 ) -> bytes:
@@ -74,7 +78,7 @@ async def create_transcript(
     )
 
     lines.append(
-        f"Generated: "
+        "Generated: "
         f"{datetime.now(JST).isoformat()}"
     )
 
@@ -89,13 +93,18 @@ async def create_transcript(
     try:
 
         async for message in channel.history(
-            limit=Config.TICKET_TRANSCRIPT_LIMIT,
+            limit=(
+                Config
+                .TICKET_TRANSCRIPT_LIMIT
+            ),
             oldest_first=True
         ):
 
             created = (
                 message.created_at
-                .astimezone(JST)
+                .astimezone(
+                    JST
+                )
                 .strftime(
                     "%Y-%m-%d %H:%M:%S"
                 )
@@ -134,7 +143,7 @@ async def create_transcript(
             if message.embeds:
 
                 lines.append(
-                    f"[Embeds] "
+                    "[Embeds] "
                     f"{len(message.embeds)}"
                 )
 
@@ -166,6 +175,105 @@ async def create_transcript(
     return transcript.encode(
         "utf-8"
     )
+
+
+# ==============================================================================
+# V32 Ticket Unlock Notification
+# ==============================================================================
+
+async def send_ticket_unlock_notifications(
+    channel,
+    member,
+    unlocks: dict
+):
+
+    if not Config.ACHIEVEMENT_NOTIFICATIONS:
+
+        return
+
+    achievement_keys = unlocks.get(
+        "achievements",
+        []
+    )
+
+    title_keys = unlocks.get(
+        "titles",
+        []
+    )
+
+    if (
+        not achievement_keys
+        and not title_keys
+    ):
+
+        return
+
+    lines = []
+
+    for key in achievement_keys:
+
+        data = (
+            Config.ACHIEVEMENTS.get(
+                key
+            )
+        )
+
+        if not data:
+
+            continue
+
+        lines.append(
+            f"🏆 実績解除: "
+            f"{data['emoji']} "
+            f"**{data['name']}**"
+        )
+
+    for key in title_keys:
+
+        data = (
+            Config.TITLES.get(
+                key
+            )
+        )
+
+        if not data:
+
+            continue
+
+        lines.append(
+            f"🎖️ 称号獲得: "
+            f"**{data['name']}**"
+        )
+
+    if not lines:
+
+        return
+
+    try:
+
+        embed = discord.Embed(
+            title="🎉 新しい解除項目",
+            description="\n".join(
+                lines
+            ),
+            color=discord.Color.gold()
+        )
+
+        embed.set_footer(
+            text="Akane Bot v32"
+        )
+
+        await channel.send(
+            content=member.mention,
+            embed=embed
+        )
+
+    except Exception as e:
+
+        logger.exception(
+            "Ticket unlock notification "
+            f"failed: {e}"
+        )
 
 
 # ==============================================================================
@@ -228,7 +336,9 @@ class TicketCategorySelect(
             min_values=1,
             max_values=1,
             options=options,
-            custom_id="ticket_category_select"
+            custom_id=(
+                "ticket_category_select"
+            )
         )
 
     async def callback(
@@ -246,7 +356,9 @@ class TicketCategorySelect(
 
             return
 
-        selected = self.values[0]
+        selected = (
+            self.values[0]
+        )
 
         category_map = {
             "admin": (
@@ -270,9 +382,12 @@ class TicketCategorySelect(
             ),
         }
 
-        category_name, emoji = (
-            category_map[selected]
-        )
+        (
+            category_name,
+            emoji
+        ) = category_map[
+            selected
+        ]
 
         # ======================================================================
         # Duplicate Ticket Check
@@ -316,8 +431,11 @@ class TicketCategorySelect(
                 )
             )
 
-            # DB上はOpenだが
-            # Discord側では消えている場合
+            # ------------------------------------------------------------------
+            # DBではOpenだが
+            # Discord側で削除済み
+            # ------------------------------------------------------------------
+
             if not existing_channel:
 
                 try:
@@ -383,8 +501,10 @@ class TicketCategorySelect(
                     ),
             }
 
-            username = safe_channel_name(
-                interaction.user.name
+            username = (
+                safe_channel_name(
+                    interaction.user.name
+                )
             )
 
             channel_name = (
@@ -405,13 +525,19 @@ class TicketCategorySelect(
             )
 
             # ==================================================================
-            # DB
+            # DB Ticket
             # ==================================================================
 
             await self.bot.db.create_ticket(
-                guild_id=interaction.guild.id,
-                channel_id=channel.id,
-                user_id=interaction.user.id,
+                guild_id=(
+                    interaction.guild.id
+                ),
+                channel_id=(
+                    channel.id
+                ),
+                user_id=(
+                    interaction.user.id
+                ),
                 category=selected
             )
 
@@ -434,9 +560,7 @@ class TicketCategorySelect(
                     "「解決・閉じる」ボタンを"
                     "押してな。"
                 ),
-                color=(
-                    discord.Color.blue()
-                )
+                color=discord.Color.blue()
             )
 
             embed.add_field(
@@ -462,16 +586,79 @@ class TicketCategorySelect(
             )
 
             embed.set_footer(
-                text="Akane Bot v31 Ticket"
+                text="Akane Bot v32 Ticket"
             )
 
             await channel.send(
-                content=interaction.user.mention,
+                content=(
+                    interaction.user.mention
+                ),
                 embed=embed,
                 view=TicketCloseView(
                     self.bot
                 )
             )
+
+            # ==================================================================
+            # V32 Ticket Statistics
+            # ==================================================================
+
+            try:
+
+                ticket_count = (
+                    await self.bot.db
+                    .increment_ticket_count(
+                        guild_id=(
+                            interaction.guild.id
+                        ),
+                        user_id=(
+                            interaction.user.id
+                        )
+                    )
+                )
+
+                logger.info(
+                    "Ticket stat incremented | "
+                    f"guild="
+                    f"{interaction.guild.id} | "
+                    f"user="
+                    f"{interaction.user.id} | "
+                    f"count="
+                    f"{ticket_count}"
+                )
+
+                unlocks = (
+                    await self.bot.db
+                    .evaluate_progress_unlocks(
+                        guild_id=(
+                            interaction.guild.id
+                        ),
+                        user_id=(
+                            interaction.user.id
+                        )
+                    )
+                )
+
+                await (
+                    send_ticket_unlock_notifications(
+                        channel,
+                        interaction.user,
+                        unlocks
+                    )
+                )
+
+            except Exception as e:
+
+                # Stats障害で
+                # Ticket自体は消さない
+                logger.exception(
+                    "V32 ticket stats "
+                    f"failed: {e}"
+                )
+
+            # ==================================================================
+            # User Response
+            # ==================================================================
 
             await interaction.followup.send(
                 "✅ 問い合わせ用の"
@@ -490,7 +677,7 @@ class TicketCategorySelect(
 
         except ValueError:
 
-            # DB側の重複防止に引っかかった場合
+            # DB重複防止
 
             if channel:
 
@@ -606,9 +793,13 @@ class TicketCloseView(
 
     @discord.ui.button(
         label="解決・閉じる",
-        style=discord.ButtonStyle.danger,
+        style=(
+            discord.ButtonStyle.danger
+        ),
         emoji="🔒",
-        custom_id="ticket_close_button"
+        custom_id=(
+            "ticket_close_button"
+        )
     )
     async def close(
         self,
@@ -616,24 +807,44 @@ class TicketCloseView(
         button: discord.ui.Button
     ):
 
-        ticket = (
-            await self.bot.db
-            .get_ticket_by_channel(
-                interaction.channel.id
-            )
-        )
+        try:
 
-        if not ticket:
+            ticket = (
+                await self.bot.db
+                .get_ticket_by_channel(
+                    interaction.channel.id
+                )
+            )
+
+        except Exception as e:
+
+            logger.exception(
+                "Ticket lookup failed | "
+                f"error={e}"
+            )
 
             await interaction.response.send_message(
-                "このチャンネルは"
-                "Ticketとして登録されてへんみたいや。",
+                "Ticket情報を"
+                "確認できへんかったわ。",
                 ephemeral=True
             )
 
             return
 
-        ticket_user_id = ticket[2]
+        if not ticket:
+
+            await interaction.response.send_message(
+                "このチャンネルは"
+                "Ticketとして"
+                "登録されてへんみたいや。",
+                ephemeral=True
+            )
+
+            return
+
+        ticket_user_id = (
+            ticket[2]
+        )
 
         is_owner = (
             interaction.user.id
@@ -705,7 +916,9 @@ class TicketCloseConfirmView(
 
     @discord.ui.button(
         label="閉じる",
-        style=discord.ButtonStyle.danger,
+        style=(
+            discord.ButtonStyle.danger
+        ),
         emoji="✅"
     )
     async def confirm(
@@ -721,7 +934,8 @@ class TicketCloseConfirmView(
 
             await interaction.response.send_message(
                 "この確認操作を"
-                "できるんは実行した本人だけやで。",
+                "できるんは"
+                "実行した本人だけやで。",
                 ephemeral=True
             )
 
@@ -779,6 +993,16 @@ class TicketCloseConfirmView(
                 closed_at
             ) = ticket
 
+            if status != "open":
+
+                await interaction.followup.send(
+                    "このTicketは"
+                    "すでに閉じられてるで。",
+                    ephemeral=True
+                )
+
+                return
+
             # ==================================================================
             # Transcript
             # ==================================================================
@@ -823,7 +1047,9 @@ class TicketCloseConfirmView(
                         discord.Color.orange()
                     ),
                     timestamp=(
-                        datetime.now(JST)
+                        datetime.now(
+                            JST
+                        )
                     )
                 )
 
@@ -950,7 +1176,8 @@ class TicketCloseConfirmView(
         except discord.Forbidden:
 
             logger.warning(
-                "Ticket close permission denied."
+                "Ticket close "
+                "permission denied."
             )
 
             try:
@@ -994,7 +1221,9 @@ class TicketCloseConfirmView(
 
     @discord.ui.button(
         label="キャンセル",
-        style=discord.ButtonStyle.secondary,
+        style=(
+            discord.ButtonStyle.secondary
+        ),
         emoji="❌"
     )
     async def cancel(
@@ -1010,7 +1239,8 @@ class TicketCloseConfirmView(
 
             await interaction.response.send_message(
                 "この確認操作を"
-                "できるんは実行した本人だけやで。",
+                "できるんは"
+                "実行した本人だけやで。",
                 ephemeral=True
             )
 
