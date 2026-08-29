@@ -51,6 +51,10 @@ class AkaneBot(commands.Bot):
             help_command=None
         )
 
+        # ----------------------------------------------------------------------
+        # Managers
+        # ----------------------------------------------------------------------
+
         self.db = DatabaseManager(
             Config.DB_NAME
         )
@@ -68,7 +72,7 @@ class AkaneBot(commands.Bot):
         )
 
         logger.info(
-            "Akane Bot v28 starting..."
+            "Akane Bot v29 starting..."
         )
 
         logger.info(
@@ -76,46 +80,111 @@ class AkaneBot(commands.Bot):
         )
 
         logger.info(
-            f"AI model: {Config.GPT_MODEL}"
+            f"Chat model: {Config.CHAT_MODEL}"
+        )
+
+        logger.info(
+            f"Reasoning model: {Config.REASONING_MODEL}"
+        )
+
+        logger.info(
+            f"Fast model: {Config.FAST_MODEL}"
+        )
+
+        logger.info(
+            f"Memory limit: "
+            f"{Config.MEMORY_MESSAGE_LIMIT} messages"
+        )
+
+        logger.info(
+            f"Memory retention: "
+            f"{Config.MEMORY_RETENTION_DAYS} days"
         )
 
         logger.info(
             "=============================================="
         )
 
-        # ----------------------------------------------------------------------
+        # ======================================================================
         # Database
-        # ----------------------------------------------------------------------
+        # ======================================================================
 
-        await self.db.init()
+        try:
 
-        logger.info(
-            f"Database initialized: {Config.DB_NAME}"
-        )
+            await self.db.init()
 
-        # ----------------------------------------------------------------------
+            logger.info(
+                f"Database initialized: "
+                f"{Config.DB_NAME}"
+            )
+
+        except Exception as e:
+
+            logger.exception(
+                f"Database initialization failed: {e}"
+            )
+
+            raise
+
+        # ======================================================================
+        # v29 Initial Memory Cleanup
+        # ======================================================================
+
+        try:
+
+            deleted = (
+                await self.db
+                .cleanup_old_conversations(
+                    Config.MEMORY_RETENTION_DAYS
+                )
+            )
+
+            logger.info(
+                "Initial memory cleanup completed | "
+                f"deleted={deleted}"
+            )
+
+        except Exception as e:
+
+            # Memory cleanup failureだけで
+            # Bot全体を起動不能にはしない
+            logger.exception(
+                f"Initial memory cleanup failed: {e}"
+            )
+
+        # ======================================================================
         # Persistent Views
-        # ----------------------------------------------------------------------
+        # ======================================================================
 
-        self.add_view(
-            EventView()
-        )
+        try:
 
-        self.add_view(
-            TicketView()
-        )
+            self.add_view(
+                EventView()
+            )
 
-        self.add_view(
-            TicketCloseView()
-        )
+            self.add_view(
+                TicketView()
+            )
 
-        logger.info(
-            "Persistent views loaded."
-        )
+            self.add_view(
+                TicketCloseView()
+            )
 
-        # ----------------------------------------------------------------------
+            logger.info(
+                "Persistent views loaded."
+            )
+
+        except Exception as e:
+
+            logger.exception(
+                f"Persistent view loading failed: {e}"
+            )
+
+            raise
+
+        # ======================================================================
         # Cogs
-        # ----------------------------------------------------------------------
+        # ======================================================================
 
         extensions = [
             "cogs.admin",
@@ -132,7 +201,8 @@ class AkaneBot(commands.Bot):
                 )
 
                 logger.info(
-                    f"Extension loaded: {extension}"
+                    f"Extension loaded: "
+                    f"{extension}"
                 )
 
             except Exception as e:
@@ -144,16 +214,17 @@ class AkaneBot(commands.Bot):
 
                 raise
 
-        # ----------------------------------------------------------------------
+        # ======================================================================
         # Slash Commands
-        # ----------------------------------------------------------------------
+        # ======================================================================
 
         try:
 
             synced = await self.tree.sync()
 
             logger.info(
-                f"Slash commands synced: {len(synced)}"
+                f"Slash commands synced: "
+                f"{len(synced)}"
             )
 
         except Exception as e:
@@ -163,6 +234,10 @@ class AkaneBot(commands.Bot):
             )
 
             raise
+
+        logger.info(
+            "setup_hook completed."
+        )
 
     # ==========================================================================
     # Ready
@@ -179,47 +254,183 @@ class AkaneBot(commands.Bot):
         )
 
         logger.info(
-            f"Discord.py version: {discord.__version__}"
+            f"Bot user ID: {self.user.id}"
         )
 
         logger.info(
-            f"OpenAI version: {openai.__version__}"
+            f"Discord.py version: "
+            f"{discord.__version__}"
         )
 
         logger.info(
-            f"Database: {Config.DB_NAME}"
+            f"OpenAI version: "
+            f"{openai.__version__}"
         )
 
         logger.info(
-            f"Guild count: {len(self.guilds)}"
+            f"Database: "
+            f"{Config.DB_NAME}"
         )
 
         logger.info(
-            "Akane Bot v28 READY"
+            f"Guild count: "
+            f"{len(self.guilds)}"
+        )
+
+        logger.info(
+            f"Chat model: "
+            f"{Config.CHAT_MODEL}"
+        )
+
+        logger.info(
+            f"Reasoning model: "
+            f"{Config.REASONING_MODEL}"
+        )
+
+        logger.info(
+            f"Fast model: "
+            f"{Config.FAST_MODEL}"
+        )
+
+        logger.info(
+            f"Memory message limit: "
+            f"{Config.MEMORY_MESSAGE_LIMIT}"
+        )
+
+        logger.info(
+            f"Memory retention days: "
+            f"{Config.MEMORY_RETENTION_DAYS}"
+        )
+
+        logger.info(
+            "Akane Bot v29 READY"
         )
 
         logger.info(
             "=============================================="
         )
 
+    # ==========================================================================
+    # Global App Command Error Handler
+    # ==========================================================================
+
+    async def on_app_command_error(
+        self,
+        interaction: discord.Interaction,
+        error: discord.app_commands.AppCommandError
+    ):
+
+        logger.exception(
+            "Global app command error | "
+            f"command="
+            f"{interaction.command.name if interaction.command else 'unknown'} "
+            f"| user={interaction.user.id} "
+            f"| error={error}"
+        )
+
+        error_message = (
+            "ごめん、コマンド処理中に"
+            "エラーが起きたで。"
+        )
+
+        try:
+
+            if interaction.response.is_done():
+
+                await interaction.followup.send(
+                    error_message,
+                    ephemeral=True
+                )
+
+            else:
+
+                await interaction.response.send_message(
+                    error_message,
+                    ephemeral=True
+                )
+
+        except Exception as send_error:
+
+            logger.exception(
+                "Failed to send app command "
+                f"error message: {send_error}"
+            )
+
+    # ==========================================================================
+    # Discord Error
+    # ==========================================================================
+
+    async def on_error(
+        self,
+        event_method,
+        *args,
+        **kwargs
+    ):
+
+        logger.exception(
+            f"Unhandled Discord event error | "
+            f"event={event_method}"
+        )
+
 
 # ==============================================================================
-# Main
+# Bot Instance
 # ==============================================================================
 
 bot = AkaneBot()
 
+
+# ==============================================================================
+# Main
+# ==============================================================================
 
 if __name__ == "__main__":
 
     if not Config.DISCORD_TOKEN:
 
         logger.error(
+            "=============================================="
+        )
+
+        logger.error(
             "DISCORD_TOKEN is missing."
+        )
+
+        logger.error(
+            "Railway Variables または .env を確認してください。"
+        )
+
+        logger.error(
+            "=============================================="
         )
 
     else:
 
-        bot.run(
-            Config.DISCORD_TOKEN
+        logger.info(
+            "Starting Discord connection..."
         )
+
+        try:
+
+            bot.run(
+                Config.DISCORD_TOKEN
+            )
+
+        except discord.LoginFailure:
+
+            logger.exception(
+                "Discord login failed. "
+                "DISCORD_TOKENを確認してください。"
+            )
+
+        except KeyboardInterrupt:
+
+            logger.info(
+                "Akane Bot stopped by user."
+            )
+
+        except Exception as e:
+
+            logger.exception(
+                f"Akane Bot fatal error: {e}"
+            )
