@@ -12,7 +12,7 @@ from ai_manager import AiManager
 from views.event_view import EventView
 from views.ticket_view import (
     TicketView,
-    TicketCloseView
+    TicketCloseView,
 )
 
 
@@ -29,7 +29,7 @@ logging.basicConfig(
     ),
     handlers=[
         logging.StreamHandler()
-    ]
+    ],
 )
 
 logger = logging.getLogger(
@@ -43,14 +43,16 @@ logger = logging.getLogger(
 
 class AkaneBot(commands.Bot):
 
-    def __init__(self):
+    def __init__(
+        self
+    ):
 
         intents = discord.Intents.all()
 
         super().__init__(
             command_prefix="!",
             intents=intents,
-            help_command=None
+            help_command=None,
         )
 
         self.db = DatabaseManager(
@@ -63,14 +65,16 @@ class AkaneBot(commands.Bot):
     # Setup
     # ==========================================================================
 
-    async def setup_hook(self):
+    async def setup_hook(
+        self
+    ):
 
         logger.info(
             "=============================================="
         )
 
         logger.info(
-            "Akane Bot v31 starting..."
+            "Akane Bot v33 starting..."
         )
 
         logger.info(
@@ -95,7 +99,7 @@ class AkaneBot(commands.Bot):
 
         logger.info(
             f"Memory limit: "
-            f"{Config.MEMORY_MESSAGE_LIMIT} messages"
+            f"{Config.MEMORY_MESSAGE_LIMIT}"
         )
 
         logger.info(
@@ -104,21 +108,14 @@ class AkaneBot(commands.Bot):
         )
 
         logger.info(
-            f"XP per message: "
-            f"{Config.XP_PER_MESSAGE}"
-        )
-
-        logger.info(
-            f"XP cooldown: "
+            f"XP: "
+            f"{Config.XP_PER_MESSAGE} per "
             f"{Config.XP_COOLDOWN_SECONDS}s"
         )
 
         logger.info(
-            "Spam protection: ENABLED"
-        )
-
-        logger.info(
-            "Ticket system: V31"
+            f"Ranking limit: "
+            f"{Config.RANKING_LIMIT}"
         )
 
         logger.info(
@@ -138,11 +135,14 @@ class AkaneBot(commands.Bot):
                 f"{Config.DB_NAME}"
             )
 
+            logger.info(
+                "Weekly XP table: READY"
+            )
+
         except Exception as e:
 
             logger.exception(
-                "Database initialization "
-                f"failed: {e}"
+                f"Database initialization failed: {e}"
             )
 
             raise
@@ -168,8 +168,7 @@ class AkaneBot(commands.Bot):
         except Exception as e:
 
             logger.exception(
-                "Initial memory cleanup "
-                f"failed: {e}"
+                f"Memory cleanup failed: {e}"
             )
 
         # ======================================================================
@@ -182,7 +181,6 @@ class AkaneBot(commands.Bot):
                 EventView()
             )
 
-            # V31 Ticket
             self.add_view(
                 TicketView(
                     self
@@ -202,14 +200,13 @@ class AkaneBot(commands.Bot):
         except Exception as e:
 
             logger.exception(
-                "Persistent view loading "
-                f"failed: {e}"
+                f"Persistent views failed: {e}"
             )
 
             raise
 
         # ======================================================================
-        # Cogs
+        # Extensions
         # ======================================================================
 
         extensions = [
@@ -246,12 +243,10 @@ class AkaneBot(commands.Bot):
 
         try:
 
-            synced = (
-                await self.tree.sync()
-            )
+            synced = await self.tree.sync()
 
             logger.info(
-                "Slash commands synced: "
+                f"Slash commands synced: "
                 f"{len(synced)}"
             )
 
@@ -271,21 +266,24 @@ class AkaneBot(commands.Bot):
     # Ready
     # ==========================================================================
 
-    async def on_ready(self):
+    async def on_ready(
+        self
+    ):
 
         logger.info(
             "=============================================="
         )
 
         logger.info(
-            f"Logged in as "
-            f"{self.user}"
+            f"Logged in as {self.user}"
         )
 
-        logger.info(
-            f"Bot user ID: "
-            f"{self.user.id}"
-        )
+        if self.user:
+
+            logger.info(
+                f"Bot user ID: "
+                f"{self.user.id}"
+            )
 
         logger.info(
             f"Discord.py version: "
@@ -308,35 +306,16 @@ class AkaneBot(commands.Bot):
         )
 
         logger.info(
-            f"Chat model: "
-            f"{Config.CHAT_MODEL}"
+            f"Current week: "
+            f"{self.db.current_week_key()}"
         )
 
         logger.info(
-            f"Reasoning model: "
-            f"{Config.REASONING_MODEL}"
+            "AI memory: READY"
         )
 
         logger.info(
-            f"Fast model: "
-            f"{Config.FAST_MODEL}"
-        )
-
-        logger.info(
-            f"Memory message limit: "
-            f"{Config.MEMORY_MESSAGE_LIMIT}"
-        )
-
-        logger.info(
-            f"Memory retention days: "
-            f"{Config.MEMORY_RETENTION_DAYS}"
-        )
-
-        logger.info(
-            f"XP: "
-            f"{Config.XP_PER_MESSAGE} "
-            f"per "
-            f"{Config.XP_COOLDOWN_SECONDS}s"
+            "XP system: READY"
         )
 
         logger.info(
@@ -348,7 +327,27 @@ class AkaneBot(commands.Bot):
         )
 
         logger.info(
-            "Akane Bot v31 READY"
+            "Achievements: READY"
+        )
+
+        logger.info(
+            "Titles: READY"
+        )
+
+        logger.info(
+            "Fortune: READY"
+        )
+
+        logger.info(
+            "Weekly XP ranking: READY"
+        )
+
+        logger.info(
+            "Community rankings: READY"
+        )
+
+        logger.info(
+            "Akane Bot v33 READY"
         )
 
         logger.info(
@@ -356,13 +355,13 @@ class AkaneBot(commands.Bot):
         )
 
     # ==========================================================================
-    # Global Slash Command Error
+    # App Command Error
     # ==========================================================================
 
     async def on_app_command_error(
         self,
         interaction: discord.Interaction,
-        error: discord.app_commands.AppCommandError
+        error: discord.app_commands.AppCommandError,
     ):
 
         command_name = (
@@ -378,36 +377,28 @@ class AkaneBot(commands.Bot):
             f"error={error}"
         )
 
-        error_message = (
-            "ごめん、コマンド処理中に"
-            "エラーが起きたで。"
-        )
-
         try:
 
-            if (
-                interaction.response
-                .is_done()
-            ):
+            if interaction.response.is_done():
 
                 await interaction.followup.send(
-                    error_message,
+                    "ごめん、コマンド処理中に"
+                    "エラーが起きたで。",
                     ephemeral=True
                 )
 
             else:
 
                 await interaction.response.send_message(
-                    error_message,
+                    "ごめん、コマンド処理中に"
+                    "エラーが起きたで。",
                     ephemeral=True
                 )
 
-        except Exception as send_error:
+        except Exception as e:
 
             logger.exception(
-                "Failed to send app "
-                "command error | "
-                f"error={send_error}"
+                f"Error response failed: {e}"
             )
 
     # ==========================================================================
@@ -418,12 +409,11 @@ class AkaneBot(commands.Bot):
         self,
         event_method,
         *args,
-        **kwargs
+        **kwargs,
     ):
 
         logger.exception(
-            "Unhandled Discord "
-            f"event error | "
+            "Unhandled Discord event error | "
             f"event={event_method}"
         )
 
@@ -444,20 +434,7 @@ if __name__ == "__main__":
     if not Config.DISCORD_TOKEN:
 
         logger.error(
-            "=============================================="
-        )
-
-        logger.error(
             "DISCORD_TOKEN is missing."
-        )
-
-        logger.error(
-            "Railway Variables または "
-            ".env を確認してください。"
-        )
-
-        logger.error(
-            "=============================================="
         )
 
     else:
@@ -475,8 +452,7 @@ if __name__ == "__main__":
         except discord.LoginFailure:
 
             logger.exception(
-                "Discord login failed. "
-                "DISCORD_TOKENを確認してください。"
+                "Discord login failed."
             )
 
         except KeyboardInterrupt:
