@@ -11,17 +11,19 @@ import httpx
 
 logger = logging.getLogger("AkaneBot")
 
-
-def _env_flag(name: str, default: bool) -> bool:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+VALID_JEV_ROUTER_MODES = {"legacy", "shadow", "production"}
 
 
-def jev_shadow_enabled() -> bool:
-    """Shadow mode is on by default; without a key it performs no network call."""
-    return _env_flag("JEV_ROUTER_SHADOW", True)
+def jev_router_mode() -> str:
+    """Return the configured routing mode, failing closed to legacy."""
+    raw_mode = os.getenv("JEV_ROUTER_MODE", "legacy").strip().lower()
+    if raw_mode not in VALID_JEV_ROUTER_MODES:
+        logger.warning(
+            "Invalid JEV_ROUTER_MODE=%s; falling back to legacy",
+            raw_mode,
+        )
+        return "legacy"
+    return raw_mode
 
 
 @dataclass(frozen=True)
@@ -63,12 +65,18 @@ class JevModelRouter:
         model: str,
         confidence_threshold: float,
         timeout_seconds: float,
+        mode: str = "production",
     ) -> None:
         self.api_key = (api_key or "").strip()
         self.endpoint = endpoint
         self.model = model
         self.confidence_threshold = confidence_threshold
         self.timeout_seconds = timeout_seconds
+        self.mode = (
+            mode
+            if mode in VALID_JEV_ROUTER_MODES
+            else "legacy"
+        )
 
     @classmethod
     def from_environment(cls) -> "JevModelRouter":
@@ -83,8 +91,9 @@ class JevModelRouter:
                 os.getenv("JEV_ROUTER_CONFIDENCE", "0.85")
             ),
             timeout_seconds=float(
-                os.getenv("JEV_ROUTER_TIMEOUT_SECONDS", "3.0")
+                os.getenv("JEV_ROUTER_TIMEOUT_SECONDS", "1.5")
             ),
+            mode=jev_router_mode(),
         )
 
     @property
