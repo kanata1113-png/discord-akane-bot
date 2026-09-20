@@ -24,6 +24,15 @@ class AiManager:
         self.jev_router = JevModelRouter.from_environment()
         self._jev_shadow_tasks = set()
 
+        logger.info(
+            "JEV router initialized | mode=%s | configured=%s | "
+            "confidence_threshold=%.2f | timeout_seconds=%.2f",
+            self.jev_router.mode,
+            self.jev_router.is_configured,
+            self.jev_router.confidence_threshold,
+            self.jev_router.timeout_seconds,
+        )
+
     # ==========================================================================
     # System Prompt
     # ==========================================================================
@@ -182,6 +191,60 @@ DiscordサーバーのマスコットAIです。
             Config.CHAT_REASONING_EFFORT,
         )
 
+    @staticmethod
+    def _jev_fallback_reason(decision) -> str:
+        if decision.error:
+            return decision.error
+        if not decision.accepted:
+            return "low_confidence"
+        return "unknown"
+
+    async def _run_jev_shadow(
+        self,
+        content: str,
+        legacy_route: str,
+    ) -> None:
+        router = getattr(self, "jev_router", None)
+        if router is None or not router.is_configured:
+            return
+
+        decision = await router.route(content)
+        legacy_normalized = self._normalize_legacy_route_for_jev(
+            legacy_route
+        )
+
+        logger.info(
+            "JEV shadow | source=legacy | legacy=%s | jev=%s | "
+            "confidence=%.4f | accepted=%s | match=%s | latency_ms=%s | "
+            "error=%s",
+            legacy_normalized,
+            decision.route,
+            decision.confidence,
+            decision.accepted,
+            decision.route == legacy_normalized,
+            decision.latency_ms,
+            decision.error,
+        )
+
+    def _schedule_jev_shadow(
+        self,
+        content: str,
+        legacy_route: str,
+    ) -> None:
+        router = getattr(self, "jev_router", None)
+        if router is None or not router.is_configured:
+            return
+
+        task = asyncio.create_task(
+            self._run_jev_shadow(content, legacy_route)
+        )
+        tasks = getattr(self, "_jev_shadow_tasks", None)
+        if tasks is None:
+            tasks = set()
+            self._jev_shadow_tasks = tasks
+        tasks.add(task)
+        task.add_done_callback(tasks.discard)
+
     async def _select_production_route(
         self,
         content: str,
@@ -189,15 +252,41 @@ DiscordサーバーのマスコットAIです。
         legacy_effort: str,
         legacy_route: str,
     ) -> tuple[str, str, str]:
-        """Use an accepted Jev decision; otherwise fail safely to legacy."""
+        """Select routing by mode and fail safely to the legacy router."""
         router = getattr(self, "jev_router", None)
         legacy_normalized = self._normalize_legacy_route_for_jev(
             legacy_route
         )
 
-        if router is None or not router.is_configured:
+        if router is None:
             logger.info(
-                "JEV production fallback | legacy=%s | reason=not_configured",
+                "JEV routing | mode=legacy | source=legacy | "
+                "fallback_reason=router_unavailable | legacy=%s",
+                legacy_normalized,
+            )
+            return legacy_model, legacy_effort, legacy_route
+
+        mode = getattr(router, "mode", "production")
+
+        if mode == "legacy":
+            logger.info(
+                "JEV routing | mode=legacy | source=legacy | legacy=%s",
+                legacy_normalized,
+            )
+            return legacy_model, legacy_effort, legacy_route
+
+        if mode == "shadow":
+            self._schedule_jev_shadow(content, legacy_route)
+            logger.info(
+                "JEV routing | mode=shadow | source=legacy | legacy=%s",
+                legacy_normalized,
+            )
+            return legacy_model, legacy_effort, legacy_route
+
+        if not router.is_configured:
+            logger.info(
+                "JEV production fallback | mode=production | source=legacy | "
+                "fallback_reason=not_configured | legacy=%s",
                 legacy_normalized,
             )
             return legacy_model, legacy_effort, legacy_route
@@ -205,9 +294,12 @@ DiscordサーバーのマスコットAIです。
         decision = await router.route(content)
 
         if not decision.accepted or decision.route is None:
+            fallback_reason = self._jev_fallback_reason(decision)
             logger.info(
-                "JEV production fallback | legacy=%s | jev=%s | "
+                "JEV production fallback | mode=production | source=legacy | "
+                "fallback_reason=%s | legacy=%s | jev=%s | "
                 "confidence=%.4f | latency_ms=%s | error=%s",
+                fallback_reason,
                 legacy_normalized,
                 decision.route,
                 decision.confidence,
@@ -218,8 +310,8 @@ DiscordサーバーのマスコットAIです。
 
         model, effort = self._route_config(decision.route)
         logger.info(
-            "JEV production | legacy=%s | jev=%s | confidence=%.4f | "
-            "latency_ms=%s | model=%s | effort=%s",
+            "JEV production | mode=production | source=jev | legacy=%s | "
+            "jev=%s | confidence=%.4f | latency_ms=%s | model=%s | effort=%s",
             legacy_normalized,
             decision.route,
             decision.confidence,
