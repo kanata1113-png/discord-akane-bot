@@ -1,3 +1,4 @@
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -79,6 +80,7 @@ async def test_missing_jev_key_fails_closed_without_network():
 
 @pytest.mark.asyncio
 async def test_shadow_disagreement_is_logged_but_does_not_change_legacy_route(caplog):
+    caplog.set_level(logging.INFO, logger="AkaneBot")
     manager = AiManager.__new__(AiManager)
 
     class FakeRouter:
