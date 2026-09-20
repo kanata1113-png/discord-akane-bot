@@ -4,7 +4,7 @@ import logging
 from openai import AsyncOpenAI
 
 from config import Config
-from services.jev_model_router import JevModelRouter, jev_shadow_enabled
+from services.jev_model_router import JevModelRouter
 
 
 logger = logging.getLogger(
@@ -165,53 +165,69 @@ DiscordサーバーのマスコットAIです。
             return "reasoning"
         return "normal-chat"
 
-    async def _run_jev_shadow(
+    @staticmethod
+    def _route_config(route: str) -> tuple[str, str]:
+        if route == "deep-reasoning":
+            return (
+                Config.REASONING_MODEL,
+                Config.DEEP_REASONING_EFFORT,
+            )
+        if route == "reasoning":
+            return (
+                Config.REASONING_MODEL,
+                Config.REASONING_EFFORT,
+            )
+        return (
+            Config.CHAT_MODEL,
+            Config.CHAT_REASONING_EFFORT,
+        )
+
+    async def _select_production_route(
         self,
         content: str,
+        legacy_model: str,
+        legacy_effort: str,
         legacy_route: str,
-    ) -> None:
+    ) -> tuple[str, str, str]:
+        """Use an accepted Jev decision; otherwise fail safely to legacy."""
         router = getattr(self, "jev_router", None)
-        if router is None or not router.is_configured:
-            return
-
-        decision = await router.route(content)
         legacy_normalized = self._normalize_legacy_route_for_jev(
             legacy_route
         )
 
+        if router is None or not router.is_configured:
+            logger.info(
+                "JEV production fallback | legacy=%s | reason=not_configured",
+                legacy_normalized,
+            )
+            return legacy_model, legacy_effort, legacy_route
+
+        decision = await router.route(content)
+
+        if not decision.accepted or decision.route is None:
+            logger.info(
+                "JEV production fallback | legacy=%s | jev=%s | "
+                "confidence=%.4f | latency_ms=%s | error=%s",
+                legacy_normalized,
+                decision.route,
+                decision.confidence,
+                decision.latency_ms,
+                decision.error,
+            )
+            return legacy_model, legacy_effort, legacy_route
+
+        model, effort = self._route_config(decision.route)
         logger.info(
-            "JEV shadow | legacy=%s | jev=%s | confidence=%.4f | "
-            "accepted=%s | match=%s | latency_ms=%s | error=%s",
+            "JEV production | legacy=%s | jev=%s | confidence=%.4f | "
+            "latency_ms=%s | model=%s | effort=%s",
             legacy_normalized,
             decision.route,
             decision.confidence,
-            decision.accepted,
-            decision.route == legacy_normalized,
             decision.latency_ms,
-            decision.error,
+            model,
+            effort,
         )
-
-    def _schedule_jev_shadow(
-        self,
-        content: str,
-        legacy_route: str,
-    ) -> None:
-        if not jev_shadow_enabled():
-            return
-
-        router = getattr(self, "jev_router", None)
-        if router is None or not router.is_configured:
-            return
-
-        task = asyncio.create_task(
-            self._run_jev_shadow(content, legacy_route)
-        )
-        tasks = getattr(self, "_jev_shadow_tasks", None)
-        if tasks is None:
-            tasks = set()
-            self._jev_shadow_tasks = tasks
-        tasks.add(task)
-        task.add_done_callback(tasks.discard)
+        return model, effort, decision.route
 
     @staticmethod
     def select_chat_max_tokens(
@@ -391,18 +407,22 @@ DiscordサーバーのマスコットAIです。
     ):
 
         (
-            model,
-            reasoning_effort,
-            route
+            legacy_model,
+            legacy_effort,
+            legacy_route
         ) = self.select_chat_model(
             content
         )
 
-        # Shadow only: Jev observes the same message but never changes the
-        # production route in v0.1. The legacy route remains authoritative.
-        self._schedule_jev_shadow(
+        (
+            model,
+            reasoning_effort,
+            route
+        ) = await self._select_production_route(
             content,
-            route,
+            legacy_model,
+            legacy_effort,
+            legacy_route,
         )
 
         regulation_mode = any(
