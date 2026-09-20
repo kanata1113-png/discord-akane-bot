@@ -4,6 +4,7 @@ import logging
 from openai import AsyncOpenAI
 
 from config import Config
+from services.jev_model_router import JevModelRouter, jev_shadow_enabled
 
 
 logger = logging.getLogger(
@@ -20,6 +21,8 @@ class AiManager:
         self.client = AsyncOpenAI(
             api_key=Config.OPENAI_API_KEY
         )
+        self.jev_router = JevModelRouter.from_environment()
+        self._jev_shadow_tasks = set()
 
     # ==========================================================================
     # System Prompt
@@ -71,7 +74,7 @@ DiscordサーバーのマスコットAIです。
         return base_prompt.strip()
 
     # ==========================================================================
-    # Model Routing - V34
+    # Model Routing - V34 legacy router
     # ==========================================================================
 
     def select_chat_model(
@@ -153,6 +156,62 @@ DiscordサーバーのマスコットAIです。
             Config.CHAT_REASONING_EFFORT,
             "normal-chat"
         )
+
+    @staticmethod
+    def _normalize_legacy_route_for_jev(route: str) -> str:
+        if route == "deep-reasoning":
+            return "deep-reasoning"
+        if route in {"regulation", "reasoning", "long-question"}:
+            return "reasoning"
+        return "normal-chat"
+
+    async def _run_jev_shadow(
+        self,
+        content: str,
+        legacy_route: str,
+    ) -> None:
+        router = getattr(self, "jev_router", None)
+        if router is None or not router.is_configured:
+            return
+
+        decision = await router.route(content)
+        legacy_normalized = self._normalize_legacy_route_for_jev(
+            legacy_route
+        )
+
+        logger.info(
+            "JEV shadow | legacy=%s | jev=%s | confidence=%.4f | "
+            "accepted=%s | match=%s | latency_ms=%s | error=%s",
+            legacy_normalized,
+            decision.route,
+            decision.confidence,
+            decision.accepted,
+            decision.route == legacy_normalized,
+            decision.latency_ms,
+            decision.error,
+        )
+
+    def _schedule_jev_shadow(
+        self,
+        content: str,
+        legacy_route: str,
+    ) -> None:
+        if not jev_shadow_enabled():
+            return
+
+        router = getattr(self, "jev_router", None)
+        if router is None or not router.is_configured:
+            return
+
+        task = asyncio.create_task(
+            self._run_jev_shadow(content, legacy_route)
+        )
+        tasks = getattr(self, "_jev_shadow_tasks", None)
+        if tasks is None:
+            tasks = set()
+            self._jev_shadow_tasks = tasks
+        tasks.add(task)
+        task.add_done_callback(tasks.discard)
 
     @staticmethod
     def select_chat_max_tokens(
@@ -337,6 +396,13 @@ DiscordサーバーのマスコットAIです。
             route
         ) = self.select_chat_model(
             content
+        )
+
+        # Shadow only: Jev observes the same message but never changes the
+        # production route in v0.1. The legacy route remains authoritative.
+        self._schedule_jev_shadow(
+            content,
+            route,
         )
 
         regulation_mode = any(
