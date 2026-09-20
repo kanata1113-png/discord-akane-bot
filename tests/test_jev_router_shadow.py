@@ -78,9 +78,9 @@ async def test_missing_jev_key_fails_closed_without_network():
     assert decision.error == "missing_api_key"
 
 
+
 @pytest.mark.asyncio
-async def test_shadow_disagreement_is_logged_but_does_not_change_legacy_route(caplog):
-    caplog.set_level(logging.INFO, logger="AkaneBot")
+async def test_accepted_jev_route_controls_production_model():
     manager = AiManager.__new__(AiManager)
 
     class FakeRouter:
@@ -88,53 +88,165 @@ async def test_shadow_disagreement_is_logged_but_does_not_change_legacy_route(ca
 
         async def route(self, content):
             return JevRouteDecision(
-                route="normal-chat",
-                confidence=0.97,
-                probabilities={"normal-chat": 0.97, "reasoning": 0.03},
-                latency_ms=100,
+                route="reasoning",
+                confidence=0.91,
+                probabilities={"normal-chat": 0.09, "reasoning": 0.91},
+                latency_ms=120,
                 accepted=True,
                 error=None,
             )
 
     manager.jev_router = FakeRouter()
 
-    await manager._run_jev_shadow(
-        "憲法上の論点を比較して",
-        "regulation",
+    model, effort, route = await manager._select_production_route(
+        "比較して考えて",
+        Config.CHAT_MODEL,
+        Config.CHAT_REASONING_EFFORT,
+        "normal-chat",
     )
 
-    assert "JEV shadow" in caplog.text
-    assert "legacy=reasoning" in caplog.text
-    assert "jev=normal-chat" in caplog.text
-    assert "match=False" in caplog.text
+    assert model == Config.REASONING_MODEL
+    assert effort == Config.REASONING_EFFORT
+    assert route == "reasoning"
 
 
 @pytest.mark.asyncio
-async def test_chat_keeps_legacy_router_authoritative_in_shadow_v01():
+async def test_low_confidence_jev_falls_back_to_legacy():
     manager = AiManager.__new__(AiManager)
-    scheduled = {}
+
+    class FakeRouter:
+        is_configured = True
+
+        async def route(self, content):
+            return JevRouteDecision(
+                route="reasoning",
+                confidence=0.70,
+                probabilities={"normal-chat": 0.30, "reasoning": 0.70},
+                latency_ms=90,
+                accepted=False,
+                error=None,
+            )
+
+    manager.jev_router = FakeRouter()
+
+    result = await manager._select_production_route(
+        "ambiguous",
+        Config.CHAT_MODEL,
+        Config.CHAT_REASONING_EFFORT,
+        "normal-chat",
+    )
+
+    assert result == (
+        Config.CHAT_MODEL,
+        Config.CHAT_REASONING_EFFORT,
+        "normal-chat",
+    )
+
+
+@pytest.mark.asyncio
+async def test_jev_error_falls_back_to_legacy():
+    manager = AiManager.__new__(AiManager)
+
+    class FakeRouter:
+        is_configured = True
+
+        async def route(self, content):
+            return JevRouteDecision(
+                route=None,
+                confidence=0.0,
+                probabilities={},
+                latency_ms=3000,
+                accepted=False,
+                error="TimeoutException",
+            )
+
+    manager.jev_router = FakeRouter()
+
+    result = await manager._select_production_route(
+        "hello",
+        Config.CHAT_MODEL,
+        Config.CHAT_REASONING_EFFORT,
+        "normal-chat",
+    )
+
+    assert result == (
+        Config.CHAT_MODEL,
+        Config.CHAT_REASONING_EFFORT,
+        "normal-chat",
+    )
+
+
+@pytest.mark.asyncio
+async def test_regulation_prompt_is_preserved_when_jev_selects_normal_chat():
+    manager = AiManager.__new__(AiManager)
     captured = {}
 
-    def fake_schedule(content, legacy_route):
-        scheduled["content"] = content
-        scheduled["legacy_route"] = legacy_route
+    class FakeRouter:
+        is_configured = True
+
+        async def route(self, content):
+            return JevRouteDecision(
+                route="normal-chat",
+                confidence=0.99,
+                probabilities={"normal-chat": 0.99},
+                latency_ms=100,
+                accepted=True,
+                error=None,
+            )
 
     async def fake_call_gpt(**kwargs):
         captured.update(kwargs)
         return "ok"
 
-    manager._schedule_jev_shadow = fake_schedule
+    manager.jev_router = FakeRouter()
     manager.call_gpt = fake_call_gpt
 
     reply, model, route = await manager.chat(
         user_name="tester",
-        content="憲法上の表現の自由を分析して",
+        content="表現の自由について教えて",
+        history=None,
+    )
+
+    assert reply == "ok"
+    assert model == Config.CHAT_MODEL
+    assert route == "normal-chat"
+    assert "【表現の自由・規制関連】" in captured["system"]
+
+
+@pytest.mark.asyncio
+async def test_chat_uses_accepted_jev_reasoning_route():
+    manager = AiManager.__new__(AiManager)
+    captured = {}
+
+    class FakeRouter:
+        is_configured = True
+
+        async def route(self, content):
+            return JevRouteDecision(
+                route="reasoning",
+                confidence=0.92,
+                probabilities={"normal-chat": 0.08, "reasoning": 0.92},
+                latency_ms=100,
+                accepted=True,
+                error=None,
+            )
+
+    async def fake_call_gpt(**kwargs):
+        captured.update(kwargs)
+        return "ok"
+
+    manager.jev_router = FakeRouter()
+    manager.call_gpt = fake_call_gpt
+
+    reply, model, route = await manager.chat(
+        user_name="tester",
+        content="短いけれど分析が必要な質問",
         history=None,
     )
 
     assert reply == "ok"
     assert model == Config.REASONING_MODEL
-    assert route == "regulation"
-    assert scheduled["legacy_route"] == "regulation"
+    assert route == "reasoning"
     assert captured["model"] == Config.REASONING_MODEL
     assert captured["max_tokens"] == Config.REASONING_MAX_TOKENS
+
