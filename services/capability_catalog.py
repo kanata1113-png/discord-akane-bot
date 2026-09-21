@@ -11,6 +11,7 @@ from services.progression_capabilities import (
     RANKINGS_SPEC,
     WEEKLY_SPEC,
 )
+from services.ticket_capabilities import TICKET_CREATE_SPEC
 from services.user_capabilities import (
     MEMORY_FORGET_SPEC,
     MEMORY_STATUS_SPEC,
@@ -28,6 +29,7 @@ GENERAL_CAPABILITY_SPECS = (
     EVENT_CREATE_SPEC,
     POLL_CREATE_SPEC,
     MESSAGE_SEARCH_SPEC,
+    TICKET_CREATE_SPEC,
     LEVEL_SPEC,
     LEADERBOARD_SPEC,
     REMIND_SPEC,
