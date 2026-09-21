@@ -16,7 +16,9 @@ from config import Config, JST
 from views.event_view import EventView
 from services.progression_capabilities import (
     build_progression_pilot_dispatcher,
+    dispatch_achievements,
     dispatch_level,
+    dispatch_profile,
     dispatch_rankings,
     dispatch_weekly,
 )
@@ -1017,44 +1019,21 @@ class GeneralCog(commands.Cog):
 
         try:
 
-            await self.bot.db.evaluate_progress_unlocks(
-                interaction.guild.id,
-                target.id
+            result = await dispatch_profile(
+                self._capability_dispatcher,
+                user_id=interaction.user.id,
+                guild_id=interaction.guild.id,
+                channel_id=interaction.channel_id,
+                target_user_id=target.id
             )
 
-            level_info = await self.bot.db.get_level_info(
-                target.id
-            )
-
-            stats = await self.bot.db.get_user_stats(
-                interaction.guild.id,
-                target.id
-            )
-
-            achievements = await self.bot.db.get_user_achievements(
-                interaction.guild.id,
-                target.id
-            )
-
-            titles = await self.bot.db.get_user_titles(
-                interaction.guild.id,
-                target.id
-            )
-
-            equipped_key = await self.bot.db.get_equipped_title(
-                interaction.guild.id,
-                target.id
-            )
-
-            weekly_xp = await self.bot.db.get_user_weekly_xp(
-                interaction.guild.id,
-                target.id
-            )
-
-            weekly_rank = await self.bot.db.get_weekly_rank(
-                interaction.guild.id,
-                target.id
-            )
+            level_info = result.value["level_info"]
+            stats = result.value["stats"]
+            achievements = result.value["achievements"]
+            titles = result.value["titles"]
+            equipped_key = result.value["equipped_key"]
+            weekly_xp = result.value["weekly_xp"]
+            weekly_rank = result.value["weekly_rank"]
 
             if (
                 equipped_key
@@ -1486,15 +1465,15 @@ class GeneralCog(commands.Cog):
 
         try:
 
-            await self.bot.db.evaluate_progress_unlocks(
-                interaction.guild.id,
-                target.id
+            result = await dispatch_achievements(
+                self._capability_dispatcher,
+                user_id=interaction.user.id,
+                guild_id=interaction.guild.id,
+                channel_id=interaction.channel_id,
+                target_user_id=target.id
             )
 
-            rows = await self.bot.db.get_user_achievements(
-                interaction.guild.id,
-                target.id
-            )
+            rows = result.value["rows"]
 
             unlocked = {
                 row[0]
