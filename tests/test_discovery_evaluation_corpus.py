@@ -29,14 +29,16 @@ POSITIVE_CASES = (
     ("これを翻訳してほしい", "translate"),
     ("発言を要約してほしい", "summary"),
     ("辞書を使いたい", "define"),
-    # Release D WRITE_CONFIRM discovery. These only enter a confirmation flow;
-    # they are intentionally not direct-execution capabilities.
+    ("メッセージを検索したい", "message_search"),
+    # WRITE_CONFIRM discovery. Candidate selection alone never performs writes.
     ("称号を変更して", "title_set"),
     ("称号を装備して", "title_set"),
     ("記憶を消して", "memory_forget"),
     ("メモリーを削除して", "memory_forget"),
     ("memoryをforgetして", "memory_forget"),
     ("リマインダーを登録して", "remind"),
+    ("イベントを作って", "event_create"),
+    ("投票を作って", "poll_create"),
 )
 
 NEGATIVE_CASES = (
@@ -54,6 +56,9 @@ NEGATIVE_CASES = (
     "記憶とは何か教えて",
     "辞書の歴史について教えて",
     "リマインダーについて教えて",
+    "イベントについて教えて",
+    "投票制度についてどう思う？",
+    "検索技術について教えて",
 )
 
 
