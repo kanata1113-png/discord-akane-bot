@@ -49,9 +49,19 @@ class AIOrchestrator:
             return BudgetDecision(route=route.route, max_output_tokens=route.max_output_tokens, hard_cap=decision.hard_cap, reason=route.budget_reason or "routing_policy_budget", controller_enabled=False)
         return decision
 
-    def build_prompts(self, *, user_name: str, content: str, context: OrchestrationContext) -> tuple[str, str]:
+    def build_prompts(
+        self,
+        *,
+        user_name: str,
+        content: str,
+        context: OrchestrationContext,
+        route: RouteSelection,
+    ) -> tuple[str, str]:
         return (
-            PromptBuilder.chat_system_prompt(regulation_mode=context.regulation_mode),
+            PromptBuilder.chat_system_prompt(
+                regulation_mode=context.regulation_mode,
+                model=route.model,
+            ),
             PromptBuilder.chat_user_prompt(user_name, content),
         )
 
@@ -60,7 +70,12 @@ class AIOrchestrator:
         intent = self.classify_intent(context)
         route = await self.select_route(content=content, history=history)
         budget = self.select_budget(route=route, context=context)
-        system_prompt, user_prompt = self.build_prompts(user_name=user_name, content=content, context=context)
+        system_prompt, user_prompt = self.build_prompts(
+            user_name=user_name,
+            content=content,
+            context=context,
+            route=route,
+        )
         plan = OrchestrationPlan(context=context, intent=intent, route=route, budget=budget, system_prompt=system_prompt, user_prompt=user_prompt)
         self.telemetry.emit(ControlPlaneEvent(
             event_id=route.event_id,
