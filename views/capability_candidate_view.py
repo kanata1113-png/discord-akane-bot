@@ -179,6 +179,47 @@ class CapabilityCandidateView(discord.ui.View):
         self.stop()
 
 
+
+def single_candidate_handoff(
+    candidate: DiscoveryCandidate,
+    *,
+    requester_id: int,
+):
+    """Skip the redundant chooser when one parameterized/write action is certain.
+
+    This never executes the capability. It only moves the requester to the
+    existing argument/confirmation UI, preserving WRITE_CONFIRM boundaries.
+    """
+    if candidate.capability_id in COMMUNITY_WRITE_DISCOVERY_IDS:
+        return (
+            "🧭 やりたいこと分かったで。必要な項目から案内するな👇",
+            CommunityWriteEntryView(
+                requester_id=requester_id,
+                capability_id=candidate.capability_id,
+                capability_name=candidate.name,
+            ),
+        )
+    if candidate.capability_id in WRITE_CONFIRM_DISCOVERY_IDS:
+        return (
+            "🧭 やりたいこと分かったで。必要な項目から案内するな👇",
+            WriteCapabilityEntryView(
+                requester_id=requester_id,
+                capability_id=candidate.capability_id,
+                capability_name=candidate.name,
+            ),
+        )
+    if candidate.capability_id in PARAMETERIZED_DISCOVERY_IDS:
+        return (
+            "🧭 やりたいこと分かったで。条件を入力してな👇",
+            ParameterizedCapabilityEntryView(
+                requester_id=requester_id,
+                capability_id=candidate.capability_id,
+                capability_name=candidate.name,
+            ),
+        )
+    return None
+
+
 def candidate_panel_text(candidates: Sequence[DiscoveryCandidate]) -> str:
     count = min(len(tuple(candidates)), 4)
     if count == 1:
