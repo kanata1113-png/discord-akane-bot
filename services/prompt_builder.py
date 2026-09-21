@@ -23,8 +23,8 @@ class PromptBuilder:
         return cls.RESPONSE_LENGTH_TARGETS.get(model, 420)
 
     @classmethod
-    def response_style_prompt(cls, model: str | None) -> str:
-        target = cls.response_length_target(model)
+    def response_style_prompt(cls, model: str | None, *, detail_level: str = "default", target_characters: int | None = None) -> str:
+        target = target_characters or cls.response_length_target(model)
         return f"""
 【日常回答スタイル】
 ・特別な指定がなければ、回答本文は日本語でおおむね{target}文字以内を目安にする
@@ -42,6 +42,8 @@ class PromptBuilder:
         cls,
         regulation_mode: bool = False,
         model: str | None = None,
+        detail_level: str = "default",
+        target_characters: int | None = None,
     ) -> str:
         base_prompt = """
 あなたは「表自派茜（ひょうじは あかね）」という
@@ -61,7 +63,7 @@ DiscordサーバーのマスコットAIです。
 ユーザーの意見に無条件に同意する必要はありません。
 """
 
-        base_prompt += "\n\n" + cls.response_style_prompt(model)
+        base_prompt += "\n\n" + cls.response_style_prompt(model, detail_level=detail_level, target_characters=target_characters)
 
         if regulation_mode:
             base_prompt += """
