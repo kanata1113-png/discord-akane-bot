@@ -9,10 +9,12 @@ from services.capability_discovery import DiscoveryCandidate
 from services.discovery_selection_executor import execute_discovery_selection
 from views.community_write_view import CommunityWriteEntryView
 from views.parameterized_capability_view import ParameterizedCapabilityEntryView
-from views.write_capability_view import WriteCapabilityEntryView, write_capability_panel_text
+from views.ticket_view import TicketCreateEntryView
+from views.write_capability_view import WriteCapabilityEntryView
 
 
-# Frozen Release D contract.
+# Frozen Release D/E execution boundaries. The UX may become shorter, but these
+# capabilities still keep their existing confirmation and authorization rules.
 WRITE_CONFIRM_DISCOVERY_IDS = frozenset({"title_set", "memory_forget", "remind"})
 COMMUNITY_WRITE_DISCOVERY_IDS = frozenset({"event_create", "poll_create"})
 RELEASE_E_WRITE_CONFIRM_DISCOVERY_IDS = frozenset({*WRITE_CONFIRM_DISCOVERY_IDS, *COMMUNITY_WRITE_DISCOVERY_IDS})
@@ -29,7 +31,12 @@ SelectionCallback = Callable[[discord.Interaction, CandidateSelection], Awaitabl
 
 
 class CapabilityCandidateView(discord.ui.View):
-    """Discovery panel gated by an explicit requester selection."""
+    """Requester-only discovery panel.
+
+    A capability button starts that capability immediately. The old extra
+    "same capability again" entry button was redundant and has been removed.
+    State-changing operations still have their separate final confirmation.
+    """
 
     def __init__(
         self,
@@ -44,11 +51,16 @@ class CapabilityCandidateView(discord.ui.View):
         self.selection: CandidateSelection | None = None
         self.cancelled = False
         self._on_select = on_select
+        self._candidates = tuple(candidates)[:4]
 
-        for candidate in tuple(candidates)[:4]:
+        for candidate in self._candidates:
             button = discord.ui.Button(
                 label=candidate.name[:80],
-                style=discord.ButtonStyle.secondary,
+                style=(
+                    discord.ButtonStyle.primary
+                    if len(self._candidates) == 1
+                    else discord.ButtonStyle.secondary
+                ),
                 custom_id=f"cap_discovery:{candidate.capability_id}",
             )
 
@@ -78,7 +90,7 @@ class CapabilityCandidateView(discord.ui.View):
         if interaction.user.id == self.requester_id:
             return True
         await interaction.response.send_message(
-            "この候補はリクエストした本人だけ選べるで。",
+            "この操作はリクエストした本人だけ使えるで。",
             ephemeral=True,
         )
         return False
@@ -96,6 +108,20 @@ class CapabilityCandidateView(discord.ui.View):
             item.disabled = True
         self.stop()
 
+        # Ticket is a native interaction entry outside the 18-capability slash
+        # catalog. Selection opens content collection; no channel is created
+        # until the later explicit final confirmation.
+        if candidate.capability_id == "ticket_create":
+            view = TicketCreateEntryView(
+                interaction.client,
+                requester_id=self.requester_id,
+                category_key="admin",
+            )
+            await view.begin(interaction)
+            return
+
+        # Selecting a discovered write capability only starts argument/scope
+        # collection. Mutation is still impossible until its later confirmation.
         if candidate.capability_id in RELEASE_E_WRITE_CONFIRM_DISCOVERY_IDS:
             if candidate.capability_id in COMMUNITY_WRITE_DISCOVERY_IDS:
                 view = CommunityWriteEntryView(
@@ -109,15 +135,12 @@ class CapabilityCandidateView(discord.ui.View):
                     capability_id=candidate.capability_id,
                     capability_name=candidate.name,
                 )
-            await interaction.response.edit_message(
-                content=write_capability_panel_text(candidate.name),
-                view=view,
-            )
+            await view.begin(interaction)
             return
 
-        # Release F parameter collection is the production default path.  A custom
-        # injected selection callback remains authoritative for tests/adapters and
-        # preserves the pre-F fail-closed contract.
+        # Parameterized capabilities likewise jump straight to their real input
+        # UI instead of asking the user to press an identical capability button.
+        # A custom injected callback remains authoritative for tests/adapters.
         if (
             candidate.capability_id in PARAMETERIZED_DISCOVERY_IDS
             and self._on_select is execute_discovery_selection
@@ -127,22 +150,15 @@ class CapabilityCandidateView(discord.ui.View):
                 capability_id=candidate.capability_id,
                 capability_name=candidate.name,
             )
-            await interaction.response.edit_message(
-                content=(
-                    f"**{candidate.name}** を使うんやな。\n"
-                    "必要な条件だけ入力してもらって、実行前に確認するで。"
-                ),
-                view=view,
-            )
+            await view.begin(interaction)
             return
 
         if self._on_select is None:
             command = candidate.slash_command or candidate.name
             await interaction.response.edit_message(
                 content=(
-                    f"選択: **{candidate.name}**\n"
-                    f"使うコマンドは `{command}` やで。\n"
-                    "※ まだ自動実行はしてへんで。"
+                    f"✨ **{candidate.name}** やな。\n"
+                    f"この画面からは自動実行せえへんから、必要なら `{command}` を使ってな。"
                 ),
                 view=self,
             )
@@ -150,12 +166,12 @@ class CapabilityCandidateView(discord.ui.View):
 
         executed = await self._on_select(interaction, self.selection)
         if executed:
-            content = f"実行済み: **{candidate.name}**"
+            content = f"✅ **{candidate.name}** を実行したで。"
         else:
             command = candidate.slash_command or candidate.name
             content = (
-                f"選択: **{candidate.name}**\n"
-                "この機能はこの画面からの直接実行対象外やで。\n"
+                f"✨ **{candidate.name}** やな。\n"
+                "この機能はこの画面から直接は実行せえへんで。\n"
                 f"必要なら `{command}` を使ってな。"
             )
 
@@ -170,20 +186,23 @@ class CapabilityCandidateView(discord.ui.View):
         for item in self.children:
             item.disabled = True
         await interaction.response.edit_message(
-            content=(
-                "キャンセル済みやで。\n"
-                "このメッセージの処理はここで終了したで。"
-            ),
+            content="👌 キャンセルしたで。何も実行してへんから安心してな。",
             view=self,
         )
         self.stop()
 
 
 def candidate_panel_text(candidates: Sequence[DiscoveryCandidate]) -> str:
-    count = min(len(tuple(candidates)), 4)
+    visible = tuple(candidates)[:4]
+    count = len(visible)
+    if count <= 1:
+        return (
+            "🔎 もしかして、探してる機能はこれやろか？\n"
+            "下のボタンを押したら操作を始めるで。必要な変更は途中でちゃんと確認するから安心してな👌\n"
+            "違ってたらキャンセルで大丈夫やで。"
+        )
     return (
-        "もしかして、次の機能を探してる？\n"
-        f"候補は{count}件や。使いたいものを選んでな。"
-        "\n※ 対応済みの読み取り機能は選択後にそのまま実行。"
-        "条件が必要な機能は入力を案内し、書き込みは必ず確認を挟むで。"
+        "🔎 もしかして、探してる機能はこのへんやろか？\n"
+        f"候補が **{count}件** あるから、使いたいものを選んでな👇\n"
+        "ボタンを押したらその操作を始めるで。違ってたらキャンセルでも大丈夫やで👌"
     )

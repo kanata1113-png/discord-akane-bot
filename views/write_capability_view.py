@@ -88,7 +88,7 @@ class ConfirmActionView(RequesterOnlyView):
             self.disable_all()
             self.stop()
             await interaction.response.edit_message(
-                content="キャンセル済みやで。書き込みはしてへんで。",
+                content="👌 キャンセルしたで。変更はしてへんから安心してな。",
                 view=self,
             )
 
@@ -117,7 +117,7 @@ class TitleSetModal(discord.ui.Modal, title="称号変更"):
             await _invoke_title_set(confirm_interaction, key)
 
         await interaction.response.send_message(
-            f"称号キー `{key}` に変更する？\n確定するまで変更はされへんで。",
+            f"🎖️ 称号キー `{key}` に変更する？\n確定するまでは変更されへんで。",
             view=ConfirmActionView(
                 requester_id=self.requester_id,
                 on_confirm=execute,
@@ -130,13 +130,14 @@ class TitleSetModal(discord.ui.Modal, title="称号変更"):
 class RemindModal(discord.ui.Modal, title="リマインダー登録"):
     minutes = discord.ui.TextInput(
         label="何分後？",
-        placeholder="1〜10080",
+        placeholder="例: 30（1〜10080）",
         min_length=1,
         max_length=5,
     )
     reminder_message = discord.ui.TextInput(
         label="知らせる内容",
         style=discord.TextStyle.paragraph,
+        placeholder="例: 勉強会の資料を確認する",
         min_length=1,
         max_length=500,
     )
@@ -150,14 +151,14 @@ class RemindModal(discord.ui.Modal, title="リマインダー登録"):
             minutes = int(str(self.minutes.value).strip())
         except ValueError:
             await interaction.response.send_message(
-                "分数は数字で入力してな。",
+                "🔢 分数は `30` みたいに数字だけで入力してな。",
                 ephemeral=True,
             )
             return
 
         if minutes < 1 or minutes > 10080:
             await interaction.response.send_message(
-                "分数は1〜10080の範囲で入力してな。",
+                "⏰ 分数は1〜10080の範囲で入力してな。",
                 ephemeral=True,
             )
             return
@@ -173,8 +174,8 @@ class RemindModal(discord.ui.Modal, title="リマインダー登録"):
 
         await interaction.response.send_message(
             (
-                f"**{minutes}分後**に「{reminder_message}」で登録する？\n"
-                "確定するまで登録はされへんで。"
+                f"⏰ **{minutes}分後**に「{reminder_message}」で登録する？\n"
+                "下の確定ボタンを押すまでは登録されへんで👌"
             ),
             view=ConfirmActionView(
                 requester_id=self.requester_id,
@@ -211,7 +212,7 @@ class ForgetScopeView(RequesterOnlyView):
 
             label = "全チャンネルの会話履歴" if all_ else "このチャンネルの会話履歴"
             await interaction.response.edit_message(
-                content=f"**{label}**を削除する？\nこの操作は取り消せへんで。",
+                content=f"⚠️ **{label}**を削除する？\nこの操作は取り消せへんで。",
                 view=ConfirmActionView(
                     requester_id=self.requester_id,
                     on_confirm=execute,
@@ -231,7 +232,7 @@ class ForgetScopeView(RequesterOnlyView):
             self.disable_all()
             self.stop()
             await interaction.response.edit_message(
-                content="キャンセル済みやで。履歴は削除してへんで。",
+                content="👌 キャンセルしたで。履歴は削除してへんで。",
                 view=self,
             )
 
@@ -244,10 +245,10 @@ class ForgetScopeView(RequesterOnlyView):
 
 
 class WriteCapabilityEntryView(RequesterOnlyView):
-    """Entry point for the Release D WRITE_CONFIRM pilot.
+    """Requester-only entry for WRITE_CONFIRM capabilities.
 
-    Selecting the capability never performs a write. It only opens argument or
-    scope collection. Actual execution requires a later explicit confirmation.
+    Opening argument/scope collection never performs the mutation. Actual state
+    changes still require the later ConfirmActionView confirmation.
     """
 
     def __init__(
@@ -273,47 +274,14 @@ class WriteCapabilityEntryView(RequesterOnlyView):
         )
 
         async def select_callback(interaction: discord.Interaction) -> None:
-            self.disable_all()
-            self.stop()
-
-            if self.capability_id == "memory_forget":
-                await interaction.response.edit_message(
-                    content="削除する会話履歴の範囲を選んでな。",
-                    view=ForgetScopeView(requester_id=self.requester_id),
-                )
-                return
-
-            await interaction.message.edit(
-                content=(
-                    f"選択: **{self.capability_name}**\n"
-                    "入力内容を確認したあと、もう一度最終確認するで。"
-                ),
-                view=self,
-            )
-
-            if self.capability_id == "title_set":
-                await interaction.response.send_modal(
-                    TitleSetModal(requester_id=self.requester_id)
-                )
-                return
-
-            if self.capability_id == "remind":
-                await interaction.response.send_modal(
-                    RemindModal(requester_id=self.requester_id)
-                )
-                return
-
-            await interaction.response.send_message(
-                "この書き込み機能はまだ確認フロー対象外やで。",
-                ephemeral=True,
-            )
+            await self.begin(interaction)
 
         async def cancel_callback(interaction: discord.Interaction) -> None:
             self.cancelled = True
             self.disable_all()
             self.stop()
             await interaction.response.edit_message(
-                content="キャンセル済みやで。書き込みはしてへんで。",
+                content="👌 キャンセルしたで。変更はしてへんで。",
                 view=self,
             )
 
@@ -322,9 +290,51 @@ class WriteCapabilityEntryView(RequesterOnlyView):
         self.add_item(select)
         self.add_item(cancel)
 
+    async def begin(self, interaction: discord.Interaction) -> None:
+        """Begin collection immediately after capability selection.
+
+        This removes the old redundant second capability button while preserving
+        the final write confirmation boundary.
+        """
+
+        self.disable_all()
+        self.stop()
+
+        if self.capability_id == "memory_forget":
+            await interaction.response.edit_message(
+                content="🧹 どの会話履歴を削除するか選んでな。",
+                view=ForgetScopeView(requester_id=self.requester_id),
+            )
+            return
+
+        await interaction.message.edit(
+            content=(
+                f"✨ **{self.capability_name}** の操作を始めるで。\n"
+                "必要な内容を入力してな。最後にもう一度確認するから安心してや👌"
+            ),
+            view=None,
+        )
+
+        if self.capability_id == "title_set":
+            await interaction.response.send_modal(
+                TitleSetModal(requester_id=self.requester_id)
+            )
+            return
+
+        if self.capability_id == "remind":
+            await interaction.response.send_modal(
+                RemindModal(requester_id=self.requester_id)
+            )
+            return
+
+        await interaction.response.send_message(
+            "この書き込み機能はまだ確認フロー対象外やで。",
+            ephemeral=True,
+        )
+
 
 def write_capability_panel_text(capability_name: str) -> str:
     return (
-        f"**{capability_name}** の操作かな？\n"
-        "書き込み系の機能やから、選択後に内容確認と最終確認を挟むで。"
+        f"✨ **{capability_name}** やな。\n"
+        "ボタンを押したら操作を始めるで。必要な変更は最後にちゃんと確認するから安心してな👌"
     )

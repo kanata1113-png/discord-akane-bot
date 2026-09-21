@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import Literal, Optional, Union
 
@@ -22,6 +23,38 @@ logger = logging.getLogger("AkaneBot")
 EventChannel = Union[discord.VoiceChannel, discord.StageChannel]
 
 
+def _clean_search_text(text: str) -> str:
+    value = re.sub(r"```.*?```", " ", text or "", flags=re.DOTALL)
+    value = re.sub(r"[`*_~>#|]", "", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    return value
+
+
+def _query_relevant_snippet(text: str, keyword: str, *, limit: int = 64) -> str:
+    """Produce a cheap query-centred snippet without an LLM call."""
+
+    clean = _clean_search_text(text)
+    if not clean:
+        return "（本文なし）"
+    key = (keyword or "").strip()
+    lowered = clean.lower()
+    index = lowered.find(key.lower()) if key else -1
+    if index < 0:
+        snippet = clean[:limit]
+        return snippet + ("…" if len(clean) > limit else "")
+
+    before = max(0, index - 22)
+    after = min(len(clean), index + len(key) + 38)
+    snippet = clean[before:after].strip()
+    if before > 0:
+        snippet = "…" + snippet
+    if after < len(clean):
+        snippet += "…"
+    if len(snippet) > limit + 2:
+        snippet = snippet[: limit + 1].rstrip() + "…"
+    return snippet
+
+
 class GeneralCog(ReleaseDGeneralCog):
     def __init__(self, bot):
         super().__init__(bot)
@@ -37,7 +70,7 @@ class GeneralCog(ReleaseDGeneralCog):
         async for message in channel.history(limit=1000, after=after):
             if target_user_id is not None and message.author.id != target_user_id:
                 continue
-            if keyword in message.content:
+            if keyword.lower() in (message.content or "").lower():
                 found.append(message)
                 if len(found) >= 100:
                     break
@@ -45,7 +78,17 @@ class GeneralCog(ReleaseDGeneralCog):
 
     @staticmethod
     def _parse_event_datetime(value: str) -> datetime:
-        naive = datetime.strptime(value.strip(), "%Y/%m/%d %H:%M")
+        text = value.strip().replace("　", " ").replace("-", "/").replace(".", "/")
+        text = re.sub(r"\s+", " ", text)
+        match = re.fullmatch(r"(\d{4}/\d{1,2}/\d{1,2})[ T](\d{1,2}[:：]\d{2}|\d{3,4})", text)
+        if not match:
+            raise ValueError("invalid_datetime_format")
+        date_part = match.group(1)
+        time_part = match.group(2).replace("：", ":")
+        if ":" not in time_part:
+            time_part = time_part.zfill(4)
+            time_part = f"{time_part[:2]}:{time_part[2:]}"
+        naive = datetime.strptime(f"{date_part} {time_part}", "%Y/%m/%d %H:%M")
         return JST.localize(naive)
 
     async def create_event(self, *, context, name: str, start: str, end: str | None, event_type: str, location: str | None, event_channel_id: int | None, description: str | None):
@@ -111,13 +154,13 @@ class GeneralCog(ReleaseDGeneralCog):
         return {"option_count": len(options)}
 
     @app_commands.command(name="event_create", description="Discord公式スケジュールイベントを作成")
-    @app_commands.describe(name="イベント名", start="開始日時（YYYY/MM/DD HH:MM、日本時間）", end="終了日時（YYYY/MM/DD HH:MM、日本時間。外部イベントは必須）", event_type="開催形式", location="外部/その他の開催場所・URL", event_channel="ボイス/ステージの開催チャンネル", description="イベント説明")
+    @app_commands.describe(name="イベント名", start="開始日時（例 2026/09/22 18:00、日本時間）", end="終了日時（外部イベントは必須）", event_type="開催形式", location="外部/その他の開催場所・URL", event_channel="ボイス/ステージの開催チャンネル", description="イベント説明")
     async def event(
         self,
         interaction: discord.Interaction,
         name: str,
         start: str,
-        event_type: Literal["external", "voice", "stage"] = "external",
+        event_type: Literal["voice", "stage", "external"] = "voice",
         end: Optional[str] = None,
         location: Optional[str] = None,
         event_channel: Optional[EventChannel] = None,
@@ -150,8 +193,9 @@ class GeneralCog(ReleaseDGeneralCog):
                 "event_channel_required": "voice/stage形式では開催チャンネルを選んでな。",
                 "event_channel_type_mismatch": "開催形式とチャンネルの種類が合ってへんで。",
                 "invalid_event_type": "開催形式が不正やで。",
+                "invalid_datetime_format": "日時は `2026/09/22 18:00` のように入力してな。自然文から作る場合は日付と時刻を別々に入力できるで。",
             }
-            message = messages.get(reason, "日時は `YYYY/MM/DD HH:MM` 形式で入力してな。")
+            message = messages.get(reason, "日時を確認してな。")
             if interaction.response.is_done():
                 await interaction.followup.send(message, ephemeral=True)
             else:
@@ -190,11 +234,43 @@ class GeneralCog(ReleaseDGeneralCog):
             await interaction.followup.send("検索中にエラーが起きたで。", ephemeral=True)
             return
         if not found:
-            await interaction.followup.send("見つからへんかったで。", ephemeral=True)
+            await interaction.followup.send(f"🔎 **{keyword}** は見つからへんかったで。", ephemeral=True)
             return
+
+        visible = found[:10]
+        lines = []
+        for index, message in enumerate(visible, start=1):
+            snippet = _query_relevant_snippet(message.content, keyword)
+            timestamp = int(message.created_at.timestamp())
+            display_name = getattr(message.author, "display_name", str(message.author))
+            lines.append(
+                f"**{index}.** 👤 **{display_name}**\n"
+                f"📝 {snippet}\n"
+                f"🕐 <t:{timestamp}:R> · [元メッセージ]({message.jump_url})"
+            )
+
+        description = "\n\n".join(lines)
+        if len(found) > len(visible):
+            description += f"\n\n📚 **{len(found)}件**見つかったで。見やすさ優先で上位{len(visible)}件を表示中。"
+
+        embed = discord.Embed(
+            title=f"🔎 検索: {keyword}",
+            description=description,
+            color=discord.Color.blue(),
+        )
+        channel_name = getattr(target_channel or interaction.channel, "name", "現在のチャンネル")
+        embed.set_footer(text=f"#{channel_name} · 最大10件をプレビュー")
+
         if len(found) > 20:
-            text = "\n".join(f"[{message.created_at}] {message.author}: {message.content}" for message in found)
-            await interaction.followup.send(f"{len(found)}件", file=discord.File(io.BytesIO(text.encode("utf-8")), filename="result.txt"), ephemeral=True)
+            export = "\n".join(
+                f"[{message.created_at.isoformat()}] {message.author}: {_clean_search_text(message.content)} | {message.jump_url}"
+                for message in found
+            )
+            await interaction.followup.send(
+                embed=embed,
+                file=discord.File(io.BytesIO(export.encode("utf-8")), filename="search-results.txt"),
+                ephemeral=True,
+            )
             return
-        description = "\n".join(f"• [{message.content[:30]}]({message.jump_url})" for message in found)
-        await interaction.followup.send(embed=discord.Embed(title=f"検索: {keyword}", description=description), ephemeral=True)
+
+        await interaction.followup.send(embed=embed, ephemeral=True)
