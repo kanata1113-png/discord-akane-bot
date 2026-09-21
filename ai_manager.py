@@ -150,6 +150,7 @@ class AiManager:
         max_tokens: int,
         history=None,
         reasoning_effort: str = "low",
+        route: str = "unknown",
     ) -> str:
         executor = getattr(self, "executor", None)
         if executor is None:
@@ -167,6 +168,7 @@ class AiManager:
             max_tokens=max_tokens,
             history=history,
             reasoning_effort=reasoning_effort,
+            route=route,
         )
 
     async def chat(self, user_name: str, content: str, history=None):
