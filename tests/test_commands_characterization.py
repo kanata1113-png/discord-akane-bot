@@ -8,7 +8,7 @@ GENERAL_COMMANDS = {
     "translate": "AI翻訳",
     "define": "AI辞書",
     "summary": "自分の発言要約",
-    "event": "イベント作成",
+    "event_create": "Discord公式スケジュールイベントを作成",
     "poll": "投票作成",
     "search": "メッセージ検索",
     "level": "レベル確認",
@@ -57,7 +57,6 @@ def test_general_command_names_and_descriptions_are_stable():
 
 def test_admin_group_name_description_and_children_are_stable():
     group = AdminCommands(SimpleNamespace())
-
     assert group.name == "admin"
     assert group.description == "サーバー管理コマンド"
     assert command_metadata(group.commands) == ADMIN_COMMANDS
