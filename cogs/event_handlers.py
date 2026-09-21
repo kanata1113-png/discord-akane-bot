@@ -9,6 +9,12 @@ import discord
 from discord.ext import commands
 
 from config import Config
+from services.jev_discovery_reranker import JevDiscoveryReranker
+from services.message_capability_discovery import discover_message_capabilities
+from views.capability_candidate_view import (
+    CapabilityCandidateView,
+    candidate_panel_text,
+)
 
 
 logger = logging.getLogger(
@@ -44,6 +50,8 @@ class EventsCog(commands.Cog):
         self.spam_strikes = {}
 
         self.xp_last_award = {}
+
+        self._discovery_reranker = JevDiscoveryReranker.from_environment()
 
     # ==========================================================================
     # Unlock Notification
@@ -469,6 +477,27 @@ class EventsCog(commands.Cog):
                 ).strip()
 
                 if clean_text:
+
+                    discovery = await discover_message_capabilities(
+                        clean_text,
+                        reranker=self._discovery_reranker,
+                    )
+
+                    if discovery.should_show_panel:
+                        logger.info(
+                            "Capability discovery panel | "
+                            f"user={message.author.id} | "
+                            f"source={discovery.source} | "
+                            f"candidates={len(discovery.candidates)}"
+                        )
+                        await message.reply(
+                            candidate_panel_text(discovery.candidates),
+                            view=CapabilityCandidateView(
+                                discovery.candidates,
+                                requester_id=message.author.id,
+                            ),
+                        )
+                        return
 
                     allowed = await self.bot.db.check_daily_limit(
                         str(
