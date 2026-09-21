@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from config import Config
@@ -105,3 +107,23 @@ async def test_metric_has_ephemeral_event_id_without_identity(monkeypatch):
     assert "guild_id" not in payload
     assert "channel_id" not in payload
     assert "content" not in payload
+
+
+@pytest.mark.asyncio
+async def test_shadow_observation_shares_authoritative_event_id(monkeypatch):
+    monkeypatch.delenv("JEV_ROUTER_CONTEXT_HINTS", raising=False)
+
+    class ShadowRouter(FakeRouter):
+        mode = "shadow"
+
+    telemetry = CapturingTelemetry()
+    policy = RoutingPolicy(ShadowRouter(), telemetry=telemetry)
+    selection = await policy.select("比較して")
+
+    if policy._shadow_tasks:
+        await asyncio.gather(*tuple(policy._shadow_tasks))
+
+    assert len(telemetry.metrics) == 2
+    events = {metric.event for metric in telemetry.metrics}
+    assert events == {"routing_decision", "shadow_observation"}
+    assert {metric.event_id for metric in telemetry.metrics} == {selection.event_id}
