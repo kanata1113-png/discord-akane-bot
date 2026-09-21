@@ -17,6 +17,8 @@ from views.event_view import EventView
 from services.progression_capabilities import (
     build_progression_pilot_dispatcher,
     dispatch_level,
+    dispatch_rankings,
+    dispatch_weekly,
 )
 
 
@@ -1722,12 +1724,16 @@ class GeneralCog(commands.Cog):
 
         try:
 
-            rows = await self.bot.db.get_weekly_xp_leaderboard(
-                interaction.guild.id,
-                Config.RANKING_LIMIT
+            result = await dispatch_weekly(
+                self._capability_dispatcher,
+                user_id=interaction.user.id,
+                guild_id=interaction.guild.id,
+                channel_id=interaction.channel_id,
+                limit=Config.RANKING_LIMIT
             )
 
-            week_key = self.bot.db.current_week_key()
+            rows = result.value["rows"]
+            week_key = result.value["week_key"]
 
             lines = []
 
@@ -1750,15 +1756,8 @@ class GeneralCog(commands.Cog):
                     f"**{xp} XP**"
                 )
 
-            user_xp = await self.bot.db.get_user_weekly_xp(
-                interaction.guild.id,
-                interaction.user.id
-            )
-
-            user_rank = await self.bot.db.get_weekly_rank(
-                interaction.guild.id,
-                interaction.user.id
-            )
+            user_xp = result.value["user_xp"]
+            user_rank = result.value["user_rank"]
 
             embed = discord.Embed(
                 title="🔥 今週のXPランキング",
@@ -1851,45 +1850,18 @@ class GeneralCog(commands.Cog):
 
         try:
 
-            if category.value == "weekly":
+            result = await dispatch_rankings(
+                self._capability_dispatcher,
+                user_id=interaction.user.id,
+                guild_id=interaction.guild.id,
+                channel_id=interaction.channel_id,
+                category=category.value,
+                limit=Config.RANKING_LIMIT
+            )
 
-                rows = await self.bot.db.get_weekly_xp_leaderboard(
-                    interaction.guild.id,
-                    Config.RANKING_LIMIT
-                )
-
-                title = "🔥 週間XPランキング"
-                suffix = "XP"
-
-            elif category.value == "messages":
-
-                rows = await self.bot.db.get_message_leaderboard(
-                    interaction.guild.id,
-                    Config.RANKING_LIMIT
-                )
-
-                title = "💬 発言数ランキング"
-                suffix = "発言"
-
-            elif category.value == "ai":
-
-                rows = await self.bot.db.get_ai_leaderboard(
-                    interaction.guild.id,
-                    Config.RANKING_LIMIT
-                )
-
-                title = "🤖 AI会話ランキング"
-                suffix = "回"
-
-            else:
-
-                rows = await self.bot.db.get_achievement_leaderboard(
-                    interaction.guild.id,
-                    Config.RANKING_LIMIT
-                )
-
-                title = "🏆 実績ランキング"
-                suffix = "個"
+            rows = result.value["rows"]
+            title = result.value["title"]
+            suffix = result.value["suffix"]
 
             lines = []
 
