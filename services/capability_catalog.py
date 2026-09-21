@@ -1,11 +1,7 @@
 from __future__ import annotations
 
 from services.ai_capabilities import DEFINE_SPEC, SUMMARY_SPEC, TRANSLATE_SPEC
-from services.community_capabilities import (
-    EVENT_CREATE_SPEC,
-    MESSAGE_SEARCH_SPEC,
-    POLL_CREATE_SPEC,
-)
+from services.community_capabilities import EVENT_CREATE_SPEC, MESSAGE_SEARCH_SPEC, POLL_CREATE_SPEC
 from services.progression_capabilities import (
     ACHIEVEMENTS_SPEC,
     FORTUNE_SPEC,
@@ -24,7 +20,8 @@ from services.user_capabilities import (
 )
 
 
-MIGRATED_GENERAL_CAPABILITY_SPECS = (
+# Canonical v4 general-user capability catalog.
+GENERAL_CAPABILITY_SPECS = (
     TRANSLATE_SPEC,
     DEFINE_SPEC,
     SUMMARY_SPEC,
@@ -45,7 +42,12 @@ MIGRATED_GENERAL_CAPABILITY_SPECS = (
     RANKINGS_SPEC,
 )
 
+# Canonical natural-language discovery surface. All general-user capabilities
+# are represented; execution policy remains separate and risk-aware.
+DISCOVERY_SPECS = GENERAL_CAPABILITY_SPECS
 
+# Historical aliases retained for regression compatibility during Release G.
+MIGRATED_GENERAL_CAPABILITY_SPECS = GENERAL_CAPABILITY_SPECS
 DISCOVERY_PILOT_SPECS = (
     LEVEL_SPEC,
     WEEKLY_SPEC,
@@ -54,8 +56,6 @@ DISCOVERY_PILOT_SPECS = (
     ACHIEVEMENTS_SPEC,
     FORTUNE_SPEC,
 )
-
-
 DISCOVERY_RELEASE_C_SPECS = (
     *DISCOVERY_PILOT_SPECS,
     LEADERBOARD_SPEC,
@@ -65,29 +65,25 @@ DISCOVERY_RELEASE_C_SPECS = (
     DEFINE_SPEC,
     SUMMARY_SPEC,
 )
-
-
 DISCOVERY_RELEASE_D_SPECS = (
     *DISCOVERY_RELEASE_C_SPECS,
     TITLE_SET_SPEC,
     MEMORY_FORGET_SPEC,
     REMIND_SPEC,
 )
+DISCOVERY_RELEASE_E_SPECS = DISCOVERY_SPECS
 
 
-# Release E first registers all remaining general-user community capabilities.
-# Only MESSAGE_SEARCH is eligible for later direct execution; event/poll retain
-# WRITE_CONFIRM semantics and require a dedicated requester-only confirmation UX.
-DISCOVERY_RELEASE_E_SPECS = (
-    *DISCOVERY_RELEASE_D_SPECS,
-    MESSAGE_SEARCH_SPEC,
-    EVENT_CREATE_SPEC,
-    POLL_CREATE_SPEC,
-)
+def general_capability_specs():
+    return GENERAL_CAPABILITY_SPECS
+
+
+def discovery_specs():
+    return DISCOVERY_SPECS
 
 
 def migrated_general_specs():
-    return MIGRATED_GENERAL_CAPABILITY_SPECS
+    return GENERAL_CAPABILITY_SPECS
 
 
 def discovery_pilot_specs():
@@ -103,4 +99,4 @@ def discovery_release_d_specs():
 
 
 def discovery_release_e_specs():
-    return DISCOVERY_RELEASE_E_SPECS
+    return DISCOVERY_SPECS

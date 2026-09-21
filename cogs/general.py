@@ -1,10 +1,10 @@
 import cogs.general_commands as _general_commands
-from cogs.community_v4 import GeneralCog
+from cogs.general_runtime import GeneralCog
 
 
-# Preserve the Phase 6 public-class identity contract while layered v4
-# stranglers own migrated behavior. Consumers importing either entrypoint
-# observe the same class object.
+# Preserve the Phase 6 public-class identity contract while the stable v4
+# runtime owns production behavior. Historical release-labelled modules remain
+# implementation details and are no longer part of the public extension path.
 _general_commands.GeneralCog = GeneralCog
 
 
