@@ -365,7 +365,7 @@ class AdminCommands(app_commands.Group):
     async def ai_usagedashboard(self, interaction: discord.Interaction):
         executor = getattr(self.bot.ai, "executor", None)
         telemetry = getattr(executor, "cost_telemetry", None)
-        routing = getattr(getattr(getattr(self.bot.ai, "orchestrator", None), "routing_policy", None), "telemetry", None)
+        routing = getattr(self.bot.ai, "routing_telemetry", None)
         since = telemetry.month_start_utc() if telemetry else None
         usage = telemetry.summary(since=since) if telemetry else {
             "requests": 0, "input_tokens": 0, "output_tokens": 0,
