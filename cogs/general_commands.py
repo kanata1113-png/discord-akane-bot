@@ -34,7 +34,7 @@ class GeneralCog(commands.Cog):
 
         self.bot = bot
         self._capability_dispatcher = build_progression_pilot_dispatcher(
-            bot.db
+            getattr(bot, "db", None)
         )
 
     # ==========================================================================
