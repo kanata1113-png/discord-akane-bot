@@ -3,6 +3,7 @@ import logging
 from openai import AsyncOpenAI
 
 from config import Config
+from services.ai_control_plane import AIControlPlane
 from services.ai_executor import AIExecutor
 from services.ai_orchestrator import AIOrchestrator
 from services.jev_model_router import JevModelRouter
@@ -15,33 +16,41 @@ logger = logging.getLogger("AkaneBot")
 
 
 class AiManager:
-    """Compatibility facade for Akane's AI platform."""
+    """Compatibility facade for Akane's AI control plane."""
 
     def __init__(self):
         self.client = AsyncOpenAI(api_key=Config.OPENAI_API_KEY)
         self.executor = AIExecutor(self.client)
-        self.jev_router = JevModelRouter.from_environment()
         self.routing_telemetry = RoutingTelemetry()
-        self.routing_policy = RoutingPolicy(
-            self.jev_router,
-            telemetry=self.routing_telemetry,
+        self.control_plane = AIControlPlane.from_environment(
+            generate=self.call_gpt,
+            routing_telemetry=self.routing_telemetry,
         )
-        self.orchestrator = AIOrchestrator(
-            self.routing_policy,
-            self.call_gpt,
-        )
+        # Keep legacy attribute names for existing call sites/tests.
+        self.jev_router = self.control_plane.provider
+        self.routing_policy = self.control_plane.routing_policy
+        self.orchestrator = self.control_plane.orchestrator
 
+        snapshot = self.control_plane.snapshot()
+        confidence_threshold = self.jev_router.confidence_threshold
+        timeout_seconds = self.jev_router.timeout_seconds
         logger.info(
-            "AI platform initialized | version=2.0-dev | "
+            "AI platform initialized | version=%s | "
             "jev_mode=%s | jev_configured=%s | "
-            "confidence_threshold=%.2f | timeout_seconds=%.2f | "
-            "context_hints=%s | adaptive_budget=%s",
-            self.jev_router.mode,
-            self.jev_router.is_configured,
-            self.jev_router.confidence_threshold,
-            self.jev_router.timeout_seconds,
-            self.routing_policy.context_hints_enabled,
-            self.routing_policy.adaptive_budget_enabled,
+            "confidence_threshold=%s | timeout_seconds=%s | "
+            "context_hints=%s | adaptive_routing=%s | "
+            "adaptive_budget_v1=%s | intent_controller=%s | "
+            "budget_controller_v2=%s",
+            snapshot.version,
+            snapshot.router_mode,
+            snapshot.router_configured,
+            confidence_threshold,
+            timeout_seconds,
+            snapshot.context_hints_enabled,
+            snapshot.adaptive_routing_enabled,
+            snapshot.adaptive_budget_v1_enabled,
+            snapshot.intent_controller_enabled,
+            snapshot.budget_controller_v2_enabled,
         )
 
     def _policy(self) -> RoutingPolicy:

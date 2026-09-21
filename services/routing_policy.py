@@ -9,7 +9,7 @@ from config import Config
 from services.context_builder import ContextBuilder, RoutingContext
 from services.cost_policy import CostPolicy
 from services.intent_gate import IntentGate
-from services.jev_model_router import JevModelRouter, JevRouteDecision
+from services.router_provider import RouteDecision, RouterProvider
 from services.routing_metrics import RoutingMetric, RoutingTelemetry
 from services.token_budget import TokenBudgetPolicy
 
@@ -63,9 +63,11 @@ class RoutingPolicy:
 
     def __init__(
         self,
-        jev_router: JevModelRouter,
+        jev_router: RouterProvider,
         telemetry: RoutingTelemetry | None = None,
     ) -> None:
+        # Keep the historical attribute name for AiManager compatibility while
+        # depending only on the structural RouterProvider protocol.
         self.jev_router = jev_router
         self.telemetry = telemetry or RoutingTelemetry()
         self._shadow_tasks: set[asyncio.Task] = set()
@@ -117,12 +119,7 @@ class RoutingPolicy:
 
     @classmethod
     def _previous_user_metadata(cls, history) -> tuple[str | None, str | None]:
-        """Find the nearest non-follow-up user turn as the continuity anchor.
-
-        This keeps chains such as "compare X" -> "tell me more" -> "what is
-        the key point?" attached to the original analytical turn without ever
-        sending prior message bodies to Jev.
-        """
+        """Find the nearest non-follow-up user turn as the continuity anchor."""
         latest_valid: str | None = None
         for item in reversed(list(history or [])):
             if item.get("role") != "user":
@@ -147,7 +144,7 @@ class RoutingPolicy:
         return None, None
 
     @staticmethod
-    def fallback_reason(decision: JevRouteDecision) -> str:
+    def fallback_reason(decision: RouteDecision) -> str:
         if decision.error:
             return decision.error
         if not decision.accepted:
@@ -159,19 +156,8 @@ class RoutingPolicy:
         cls,
         legacy: RouteSelection,
         context: RoutingContext,
-        decision: JevRouteDecision,
+        decision: RouteDecision,
     ) -> RouteSelection | None:
-        """Return a conservative route floor for low-confidence follow-ups.
-
-        The floor only applies when:
-        - the current message is a true follow-up,
-        - Jev rejected only because confidence was low (not an API error),
-        - current Legacy routing would drop to normal-chat, and
-        - the recent conversation anchor was reasoning/deep-reasoning.
-
-        High-confidence Jev decisions and transport/API failures remain
-        governed by the existing policy.
-        """
         if not context.followup_like:
             return None
         if decision.error or decision.accepted:
