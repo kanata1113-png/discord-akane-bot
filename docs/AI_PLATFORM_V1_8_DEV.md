@@ -6,19 +6,17 @@ Status: repository-only development. **Do not deploy from this branch.**
 
 ### v1.1 Routing Calibration
 
-`ROUTING_METRIC` now includes an ephemeral `event_id` plus optional privacy-minimal context and budget fields. The offline analyzer reports confidence buckets, Jev/Legacy disagreements, promotions/demotions, model mix, fallback reasons and latency distribution.
+`ROUTING_METRIC` now includes an ephemeral `event_id` plus privacy-minimal context, intent, relative-cost and budget fields. The offline analyzer reports confidence buckets, Jev/Legacy disagreements, promotions/demotions, model mix, fallback reasons, relative-cost units and latency distribution.
 
-No Discord identity or message history is added to telemetry.
+No Discord identity or prior message body is added to telemetry.
+
+### v1.2 Cost-aware Foundation
+
+`CostPolicy` estimates **relative cost units** from model tier and output budget. These values are deliberately not presented as provider prices and do not alter routing yet. They create a calibration surface for later cost-aware decisions.
 
 ### v1.3 Privacy-minimal Context Hints
 
-`ContextBuilder` derives only:
-
-- usable history count
-- prior user/assistant message counts
-- whether the current message looks like a follow-up
-
-Prior message bodies are never included in the routing hint.
+`ContextBuilder` derives only usable history count, prior role counts, and whether the current message looks like a follow-up. Prior message bodies are never included in the routing hint.
 
 Feature flag:
 
@@ -27,6 +25,16 @@ JEV_ROUTER_CONTEXT_HINTS=false
 ```
 
 Default is `false`, preserving v1.0 behavior.
+
+### v1.4 Intent Gate — Observational
+
+`IntentGate` classifies chat into coarse hints such as `casual-chat`, `question`, `analysis`, `translation-like`, `summary-like`, and `definition-like`.
+
+This is telemetry-only in v1.4. It does **not** redirect ordinary chat into slash-command pipelines.
+
+### v1.5 Response Quality Guard
+
+`ResponseGuard` performs deterministic checks for empty, mechanically too-short, and incomplete responses. It does not use another LLM and does not judge factual quality. Integration is currently diagnostic/logging only, preserving existing reply behavior.
 
 ### v1.6 Adaptive Token Budget
 
@@ -56,6 +64,6 @@ This characterizes deterministic Legacy routing without calling Jev or OpenAI.
 
 ## Safety boundary
 
-The development branch intentionally keeps all new behavioral features opt-in. A future merge alone must not activate context hints or adaptive token budgets in production.
+The development branch intentionally keeps behavior-changing features opt-in. A future merge alone must not activate context hints or adaptive token budgets in production.
 
 Production activation requires a separate reviewed configuration change after benchmark/human verification.
