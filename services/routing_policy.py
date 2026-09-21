@@ -48,6 +48,8 @@ class RouteSelection:
     event_id: str | None = None
     history_messages: int | None = None
     followup_like: bool | None = None
+    previous_route: str | None = None
+    previous_intent: str | None = None
     intent_hint: str | None = None
     estimated_cost_units: float | None = None
 
@@ -113,6 +115,20 @@ class RoutingPolicy:
             legacy_route=route,
         )
 
+    @classmethod
+    def _previous_user_metadata(cls, history) -> tuple[str | None, str | None]:
+        for item in reversed(list(history or [])):
+            if item.get("role") != "user":
+                continue
+            body = item.get("content")
+            if not isinstance(body, str) or not body.strip():
+                continue
+            return (
+                cls.normalize_legacy_route(cls.legacy_route(body)),
+                IntentGate.classify(body),
+            )
+        return None, None
+
     @staticmethod
     def fallback_reason(decision: JevRouteDecision) -> str:
         if decision.error:
@@ -160,6 +176,8 @@ class RoutingPolicy:
                 budget_reason=selection.budget_reason,
                 history_messages=selection.history_messages,
                 followup_like=selection.followup_like,
+                previous_route=selection.previous_route,
+                previous_intent=selection.previous_intent,
                 intent_hint=selection.intent_hint,
                 estimated_cost_units=selection.estimated_cost_units,
                 event_id=selection.event_id,
@@ -192,6 +210,8 @@ class RoutingPolicy:
             event_id=event_id or self.telemetry.new_event_id(),
             history_messages=context.history_messages if context else None,
             followup_like=context.followup_like if context else None,
+            previous_route=context.previous_route if context else None,
+            previous_intent=context.previous_intent if context else None,
         )
         selected = self._finalize(selected, content)
         self._emit(selected, event="shadow_observation")
@@ -212,13 +232,22 @@ class RoutingPolicy:
         task.add_done_callback(self._shadow_tasks.discard)
 
     async def select(self, content: str, history=None) -> RouteSelection:
-        context = ContextBuilder.build(content, history)
+        history_items = list(history or [])
+        previous_route, previous_intent = self._previous_user_metadata(history_items)
+        context = ContextBuilder.build(
+            content,
+            history_items,
+            previous_route=previous_route,
+            previous_intent=previous_intent,
+        )
         legacy = self.legacy_selection(content)
         mode = getattr(self.jev_router, "mode", "legacy")
         event_id = self.telemetry.new_event_id()
         context_fields = {
             "history_messages": context.history_messages,
             "followup_like": context.followup_like,
+            "previous_route": context.previous_route,
+            "previous_intent": context.previous_intent,
             "event_id": event_id,
         }
 
