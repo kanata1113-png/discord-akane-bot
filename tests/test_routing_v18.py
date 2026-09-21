@@ -41,13 +41,30 @@ def test_context_builder_never_returns_prior_message_content():
         {"role": "user", "content": "SECRET PRIOR USER TEXT"},
         {"role": "assistant", "content": "SECRET PRIOR ASSISTANT TEXT"},
     ]
-    context = ContextBuilder.build("それをもう少し詳しく", history)
+    context = ContextBuilder.build(
+        "それをもう少し詳しく",
+        history,
+        previous_route="reasoning",
+        previous_intent="analysis",
+    )
     hint = context.as_hint()
 
     assert context.history_messages == 2
     assert context.followup_like is True
+    assert context.previous_route == "reasoning"
+    assert context.previous_intent == "analysis"
+    assert "previous_route:reasoning" in hint
+    assert "previous_intent:analysis" in hint
     assert "SECRET" not in hint
     assert "PRIOR" not in hint
+
+
+def test_standalone_compare_is_not_misclassified_as_followup():
+    history = [{"role": "user", "content": "unrelated previous message"}]
+    context = ContextBuilder.build("メリットとデメリットを比較して", history)
+    assert context.followup_like is False
+    assert context.previous_route is None
+    assert context.previous_intent is None
 
 
 @pytest.mark.asyncio
@@ -63,18 +80,49 @@ async def test_context_hints_are_opt_in(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_context_hint_contains_metadata_not_history(monkeypatch):
+async def test_context_hint_contains_continuity_metadata_not_history(monkeypatch):
     monkeypatch.setenv("JEV_ROUTER_CONTEXT_HINTS", "true")
     router = FakeRouter()
     policy = RoutingPolicy(router)
     await policy.select(
-        "それを詳しく",
-        history=[{"role": "user", "content": "DO NOT SEND THIS"}],
+        "それをもう少し詳しく",
+        history=[
+            {
+                "role": "user",
+                "content": "SNSの実名制のメリットとデメリットを比較して",
+            },
+            {"role": "assistant", "content": "DO NOT SEND THIS"},
+        ],
     )
 
     assert "routing_context=" in router.seen
     assert "followup:true" in router.seen
+    assert "previous_route:reasoning" in router.seen
+    assert "previous_intent:analysis" in router.seen
+    assert "SNSの実名制" not in router.seen
     assert "DO NOT SEND THIS" not in router.seen
+
+
+@pytest.mark.asyncio
+async def test_non_followup_omits_previous_route_and_intent(monkeypatch):
+    monkeypatch.setenv("JEV_ROUTER_CONTEXT_HINTS", "true")
+    router = FakeRouter()
+    policy = RoutingPolicy(router)
+    selection = await policy.select(
+        "今日は何してた？",
+        history=[
+            {
+                "role": "user",
+                "content": "SNSの実名制のメリットとデメリットを比較して",
+            }
+        ],
+    )
+
+    assert selection.followup_like is False
+    assert selection.previous_route is None
+    assert selection.previous_intent is None
+    assert "previous_route:" not in router.seen
+    assert "previous_intent:" not in router.seen
 
 
 @pytest.mark.asyncio
@@ -107,6 +155,27 @@ async def test_metric_has_ephemeral_event_id_without_identity(monkeypatch):
     assert "guild_id" not in payload
     assert "channel_id" not in payload
     assert "content" not in payload
+
+
+@pytest.mark.asyncio
+async def test_continuity_metadata_is_visible_in_telemetry(monkeypatch):
+    monkeypatch.setenv("JEV_ROUTER_CONTEXT_HINTS", "true")
+    telemetry = CapturingTelemetry()
+    policy = RoutingPolicy(FakeRouter(), telemetry=telemetry)
+    await policy.select(
+        "それをもう少し詳しく",
+        history=[
+            {
+                "role": "user",
+                "content": "SNSの実名制のメリットとデメリットを比較して",
+            }
+        ],
+    )
+
+    payload = telemetry.metrics[0].to_dict()
+    assert payload["followup_like"] is True
+    assert payload["previous_route"] == "reasoning"
+    assert payload["previous_intent"] == "analysis"
 
 
 @pytest.mark.asyncio
