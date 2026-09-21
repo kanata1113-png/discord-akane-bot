@@ -39,6 +39,14 @@ class AdaptiveRouterProvider:
     def is_configured(self) -> bool:
         return self.provider.is_configured
 
+    @property
+    def confidence_threshold(self) -> float | None:
+        return getattr(self.provider, "confidence_threshold", None)
+
+    @property
+    def timeout_seconds(self) -> float | None:
+        return getattr(self.provider, "timeout_seconds", None)
+
     async def route(self, content: str) -> AdaptiveRouteDecision:
         decision = await self.provider.route(content)
         acceptance = self.controller.evaluate(decision)
