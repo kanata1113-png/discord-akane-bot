@@ -136,7 +136,7 @@ class RoutingPolicy:
             return content
         return f"{content}\n\n[{context.as_hint()}]"
 
-    def _emit(self, selection: RouteSelection) -> None:
+    def _emit(self, selection: RouteSelection, event: str = "routing_decision") -> None:
         self.telemetry.emit(
             RoutingMetric(
                 mode=selection.mode,
@@ -154,6 +154,7 @@ class RoutingPolicy:
                 history_messages=selection.history_messages,
                 followup_like=selection.followup_like,
                 event_id=selection.event_id,
+                event=event,
             )
         )
 
@@ -177,7 +178,7 @@ class RoutingPolicy:
             history_messages=context.history_messages if context else None,
             followup_like=context.followup_like if context else None,
         )
-        self._emit(selected)
+        self._emit(selected, event="shadow_observation")
 
     def _schedule_shadow(
         self,
