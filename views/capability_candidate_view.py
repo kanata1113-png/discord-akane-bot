@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Awaitable, Callable, Sequence
+from typing import Sequence
 
 import discord
 
 from services.capability_discovery import DiscoveryCandidate
+from services.discovery_direct_execution import execute_selected_read_only
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,19 +15,14 @@ class CandidateSelection:
     slash_command: str | None
 
 
-CandidateExecutor = Callable[
-    [discord.Interaction, DiscoveryCandidate],
-    Awaitable[bool],
-]
-
-
 class CapabilityCandidateView(discord.ui.View):
     """Explicit-selection discovery panel.
 
-    Discovery itself never executes a capability. An optional executor may run
-    only after the requesting user presses a candidate button. Unsupported
-    candidates remain selection-only and fall back to the existing slash-command
-    guidance. Cancellation never invokes the executor.
+    Discovery itself never executes a capability. Direct execution is attempted
+    only after the requesting user presses a candidate button, through the
+    narrow read-only execution policy. Unsupported candidates remain
+    selection-only and fall back to the existing slash-command guidance.
+    Cancellation never invokes execution.
     """
 
     def __init__(
@@ -34,14 +30,12 @@ class CapabilityCandidateView(discord.ui.View):
         candidates: Sequence[DiscoveryCandidate],
         *,
         requester_id: int,
-        executor: CandidateExecutor | None = None,
         timeout: float = 60.0,
     ) -> None:
         super().__init__(timeout=timeout)
         self.requester_id = requester_id
         self.selection: CandidateSelection | None = None
         self.cancelled = False
-        self._executor = executor
 
         for candidate in tuple(candidates)[:4]:
             button = discord.ui.Button(
@@ -101,13 +95,32 @@ class CapabilityCandidateView(discord.ui.View):
             item.disabled = True
 
         command = candidate.slash_command or candidate.name
-        executed = False
 
-        if self._executor is not None:
-            try:
-                executed = await self._executor(interaction, candidate)
-            except Exception:
-                executed = False
+        try:
+            executed = await execute_selected_read_only(
+                interaction,
+                candidate,
+            )
+        except Exception:
+            if interaction.response.is_done():
+                if interaction.message is not None:
+                    await interaction.message.edit(
+                        content=(
+                            f"選択: **{candidate.name}**\n"
+                            "実行中にエラーが起きたため、ここで終了したで。"
+                        ),
+                        view=self,
+                    )
+            else:
+                await interaction.response.edit_message(
+                    content=(
+                        f"選択: **{candidate.name}**\n"
+                        "実行中にエラーが起きたため、ここで終了したで。"
+                    ),
+                    view=self,
+                )
+            self.stop()
+            return
 
         if executed:
             if interaction.message is not None:
