@@ -16,6 +16,7 @@ from services.progression_capabilities import (
     build_progression_pilot_dispatcher,
     dispatch_achievements,
     dispatch_fortune,
+    dispatch_leaderboard,
     dispatch_level,
     dispatch_profile,
     dispatch_rankings,
@@ -724,7 +725,7 @@ class GeneralCog(commands.Cog):
             )
 
     # ==========================================================================
-    # Legacy Leaderboard
+    # Leaderboard
     # ==========================================================================
 
     @app_commands.command(
@@ -742,9 +743,19 @@ class GeneralCog(commands.Cog):
 
         try:
 
-            rows = await self.bot.db.get_leaderboard(
-                30
+            result = await dispatch_leaderboard(
+                self._capability_dispatcher,
+                user_id=interaction.user.id,
+                guild_id=(
+                    interaction.guild.id
+                    if interaction.guild
+                    else None
+                ),
+                channel_id=interaction.channel_id,
+                limit=30
             )
+
+            rows = result.value["rows"]
 
             lines = []
 
