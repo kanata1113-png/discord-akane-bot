@@ -1,4 +1,13 @@
 from services.ai_executor import AIExecutor
+from services.capability_core import (
+    CapabilityContext,
+    CapabilityDispatcher,
+    CapabilityRegistry,
+    CapabilityRequest,
+    CapabilityResult,
+    CapabilityRisk,
+    CapabilitySpec,
+)
 from services.maintenance_service import MaintenanceService
 from services.memory_service import MemoryService
 from services.progress_service import ProgressService
@@ -11,6 +20,13 @@ from services.xp_service import XPService
 
 __all__ = [
     "AIExecutor",
+    "CapabilityContext",
+    "CapabilityDispatcher",
+    "CapabilityRegistry",
+    "CapabilityRequest",
+    "CapabilityResult",
+    "CapabilityRisk",
+    "CapabilitySpec",
     "MaintenanceService",
     "MemoryService",
     "ModelTier",
