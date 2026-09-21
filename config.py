@@ -126,6 +126,19 @@ class Config:
 
     TICKET_CLOSE_CONFIRM_TIMEOUT = 60
 
+    # Optional staff role allowed to manage native tickets in addition to admins.
+    # Configure with the Discord role ID in Railway, e.g. AKANE_TICKET_STAFF_ROLE_ID=123...
+    TICKET_STAFF_ROLE_ID = (
+        int(os.getenv("AKANE_TICKET_STAFF_ROLE_ID"))
+        if os.getenv("AKANE_TICKET_STAFF_ROLE_ID", "").isdigit()
+        else None
+    )
+
+    TICKET_CATEGORY_NAME = os.getenv(
+        "AKANE_TICKET_CATEGORY_NAME",
+        "🎫｜Tickets",
+    )
+
     # ==========================================================================
     # Profile / Achievement
     # ==========================================================================
