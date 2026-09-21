@@ -3,6 +3,7 @@ import logging
 from openai import AsyncOpenAI
 
 from config import Config
+from services.adaptive_router_provider import AdaptiveRouterProvider
 from services.ai_executor import AIExecutor
 from services.ai_orchestrator import AIOrchestrator
 from services.jev_model_router import JevModelRouter
@@ -15,12 +16,13 @@ logger = logging.getLogger("AkaneBot")
 
 
 class AiManager:
-    """Compatibility facade for Akane's AI platform."""
+    """Compatibility facade for Akane's AI control plane."""
 
     def __init__(self):
         self.client = AsyncOpenAI(api_key=Config.OPENAI_API_KEY)
         self.executor = AIExecutor(self.client)
-        self.jev_router = JevModelRouter.from_environment()
+        base_router = JevModelRouter.from_environment()
+        self.jev_router = AdaptiveRouterProvider(base_router)
         self.routing_telemetry = RoutingTelemetry()
         self.routing_policy = RoutingPolicy(
             self.jev_router,
@@ -32,11 +34,12 @@ class AiManager:
         )
 
         logger.info(
-            "AI platform initialized | version=2.4-dev | "
+            "AI platform initialized | version=3.0-candidate | "
             "jev_mode=%s | jev_configured=%s | "
             "confidence_threshold=%.2f | timeout_seconds=%.2f | "
             "context_hints=%s | adaptive_budget_v1=%s | "
-            "intent_controller=%s | budget_controller_v2=%s",
+            "intent_controller=%s | budget_controller_v2=%s | "
+            "adaptive_routing_policy=%s",
             self.jev_router.mode,
             self.jev_router.is_configured,
             self.jev_router.confidence_threshold,
@@ -45,13 +48,14 @@ class AiManager:
             self.routing_policy.adaptive_budget_enabled,
             self.orchestrator.intent_controller.enabled,
             self.orchestrator.budget_controller.enabled,
+            self.jev_router.adaptive_policy_enabled,
         )
 
     def _policy(self) -> RoutingPolicy:
         policy = getattr(self, "routing_policy", None)
         router = getattr(self, "jev_router", None)
         if router is None:
-            router = JevModelRouter.from_environment()
+            router = AdaptiveRouterProvider(JevModelRouter.from_environment())
             self.jev_router = router
         if policy is None or policy.jev_router is not router:
             telemetry = getattr(self, "routing_telemetry", None)
@@ -144,6 +148,7 @@ class AiManager:
         max_tokens: int,
         history=None,
         reasoning_effort: str = "low",
+        requested_format: str | None = None,
     ) -> str:
         executor = getattr(self, "executor", None)
         if executor is None:
@@ -161,6 +166,7 @@ class AiManager:
             max_tokens=max_tokens,
             history=history,
             reasoning_effort=reasoning_effort,
+            requested_format=requested_format,
         )
 
     async def chat(self, user_name: str, content: str, history=None):
