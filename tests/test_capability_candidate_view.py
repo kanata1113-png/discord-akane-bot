@@ -24,24 +24,31 @@ class FakeResponse:
     def __init__(self):
         self.sent = None
         self.edited = None
+        self._done = False
 
     async def send_message(self, content, *, ephemeral=False):
         self.sent = {
             "content": content,
             "ephemeral": ephemeral,
         }
+        self._done = True
 
     async def edit_message(self, *, content, view):
         self.edited = {
             "content": content,
             "view": view,
         }
+        self._done = True
+
+    def is_done(self):
+        return self._done
 
 
 class FakeInteraction:
     def __init__(self, user_id):
         self.user = SimpleNamespace(id=user_id)
         self.response = FakeResponse()
+        self.message = None
 
 
 def test_panel_caps_candidate_buttons_at_four_and_contains_no_dispatcher():
@@ -63,14 +70,16 @@ def test_panel_caps_candidate_buttons_at_four_and_contains_no_dispatcher():
     assert view.cancelled is False
     assert not hasattr(view, "dispatcher")
     assert not hasattr(view, "handler")
+    assert not hasattr(view, "db")
 
 
-def test_panel_copy_explicitly_says_selection_does_not_execute():
+def test_panel_copy_explains_direct_execution_boundary():
     text = candidate_panel_text(
         (candidate("weekly", "今週のXPランキング", "/weekly"),)
     )
 
-    assert "自動実行されへん" in text
+    assert "読み取り機能は選択後にそのまま実行" in text
+    assert "未対応の候補は既存コマンド" in text
 
 
 def test_buttons_are_existing_capability_metadata_only():
