@@ -4,8 +4,7 @@
 Usage:
     python tools/analyze_routing_metrics.py railway.log
 
-The input is expected to contain normal application logs with embedded lines of
-`ROUTING_METRIC {json}`. Message content and Discord identifiers are not needed.
+No message content or Discord identity is required.
 """
 
 from __future__ import annotations
@@ -18,6 +17,7 @@ from pathlib import Path
 
 
 PREFIX = "ROUTING_METRIC "
+CONFIDENCE_BUCKETS = ((0.0, 0.80), (0.80, 0.85), (0.85, 0.90), (0.90, 0.95), (0.95, 1.01))
 
 
 def load_metrics(path: Path) -> list[dict]:
@@ -35,9 +35,14 @@ def load_metrics(path: Path) -> list[dict]:
 
 
 def pct(part: int, total: int) -> str:
-    if not total:
-        return "0.0%"
-    return f"{part / total * 100:.1f}%"
+    return "0.0%" if not total else f"{part / total * 100:.1f}%"
+
+
+def confidence_bucket(value: float) -> str:
+    for low, high in CONFIDENCE_BUCKETS:
+        if low <= value < high:
+            return f"{low:.2f}-{min(high, 1.0):.2f}"
+    return "unknown"
 
 
 def main() -> int:
@@ -45,55 +50,61 @@ def main() -> int:
         print("usage: analyze_routing_metrics.py <logfile>")
         return 2
 
-    path = Path(sys.argv[1])
-    metrics = load_metrics(path)
-    decisions = [
-        item for item in metrics
-        if item.get("event") == "routing_decision"
+    metrics = load_metrics(Path(sys.argv[1]))
+    decisions = [m for m in metrics if m.get("event") == "routing_decision"]
+    shadows = [m for m in metrics if m.get("event") == "shadow_observation"]
+
+    sources = Counter(m.get("source", "unknown") for m in decisions)
+    selected = Counter(m.get("selected_route", "unknown") for m in decisions)
+    models = Counter(m.get("model", "unknown") for m in decisions)
+    intents = Counter(m.get("intent_hint", "unknown") for m in decisions)
+    budgets = Counter(m.get("budget_reason", "fixed") for m in decisions)
+    fallbacks = Counter(m.get("fallback_reason") for m in decisions if m.get("fallback_reason"))
+
+    disagreements = [
+        m for m in metrics
+        if m.get("jev_route") and m.get("legacy_route") and m.get("jev_route") != m.get("legacy_route")
     ]
-    shadows = [
-        item for item in metrics
-        if item.get("event") == "shadow_observation"
+    promotions = [
+        m for m in disagreements
+        if m.get("legacy_route") == "normal-chat" and m.get("jev_route") in {"reasoning", "deep-reasoning"}
+    ]
+    demotions = [
+        m for m in disagreements
+        if m.get("legacy_route") in {"reasoning", "deep-reasoning"} and m.get("jev_route") == "normal-chat"
     ]
 
-    sources = Counter(item.get("source", "unknown") for item in decisions)
-    selected = Counter(
-        item.get("selected_route", "unknown") for item in decisions
-    )
-    fallbacks = Counter(
-        item.get("fallback_reason")
-        for item in decisions
-        if item.get("fallback_reason")
-    )
-    latencies = [
-        int(item["latency_ms"])
-        for item in metrics
-        if item.get("latency_ms") is not None
-    ]
-    confidences = [
-        float(item["confidence"])
-        for item in metrics
-        if item.get("confidence") is not None
-    ]
+    latencies = [int(m["latency_ms"]) for m in metrics if m.get("latency_ms") is not None]
+    confidences = [float(m["confidence"]) for m in metrics if m.get("confidence") is not None]
+    confidence_counts = Counter(confidence_bucket(v) for v in confidences)
+    relative_costs = [float(m["estimated_cost_units"]) for m in decisions if m.get("estimated_cost_units") is not None]
+    followups = sum(bool(m.get("followup_like")) for m in decisions)
 
     print(f"routing decisions: {len(decisions)}")
     print(f"shadow observations: {len(shadows)}")
-    print(
-        "jev source: "
-        f"{sources.get('jev', 0)} "
-        f"({pct(sources.get('jev', 0), len(decisions))})"
-    )
-    print(
-        "legacy source: "
-        f"{sources.get('legacy', 0)} "
-        f"({pct(sources.get('legacy', 0), len(decisions))})"
-    )
+    print(f"jev source: {sources.get('jev', 0)} ({pct(sources.get('jev', 0), len(decisions))})")
+    print(f"legacy source: {sources.get('legacy', 0)} ({pct(sources.get('legacy', 0), len(decisions))})")
+    print(f"jev/legacy disagreements: {len(disagreements)} ({pct(len(disagreements), len(metrics))})")
+    print(f"promotions normal->reasoning/deep: {len(promotions)}")
+    print(f"demotions reasoning/deep->normal: {len(demotions)}")
+    print(f"follow-up-like decisions: {followups}")
     print("selected routes:", dict(selected))
+    print("models:", dict(models))
+    print("intent hints:", dict(intents))
     print("fallback reasons:", dict(fallbacks))
+    print("confidence buckets:", dict(confidence_counts))
+    print("budget reasons:", dict(budgets))
+
+    if relative_costs:
+        print(f"relative cost units total: {sum(relative_costs):.3f}")
+        print(f"relative cost units mean: {statistics.mean(relative_costs):.3f}")
 
     if latencies:
+        ordered = sorted(latencies)
+        p95_index = max(0, min(len(ordered) - 1, int(len(ordered) * 0.95) - 1))
         print(f"jev latency mean ms: {statistics.mean(latencies):.1f}")
         print(f"jev latency median ms: {statistics.median(latencies):.1f}")
+        print(f"jev latency p95-ish ms: {ordered[p95_index]}")
         print(f"jev latency max ms: {max(latencies)}")
 
     if confidences:
