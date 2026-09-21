@@ -44,7 +44,6 @@ class TicketRepository(BaseRepository):
 
     async def reserve_number(self, guild_id: int) -> int:
         """Atomically reserve the next human-facing ticket number per guild."""
-
         async with self.store.transaction() as db:
             cursor = await db.execute(
                 "SELECT next_number FROM ticket_counters WHERE guild_id=?",
@@ -76,6 +75,17 @@ class TicketRepository(BaseRepository):
         subject: str | None = None,
     ) -> int:
         created_at = datetime.now(JST).isoformat()
+        # Preserve the pre-v2 repository contract for characterization tests and
+        # staged callers that do not use native-ticket metadata yet.
+        if ticket_number is None and subject is None:
+            return await self.store.insert(
+                """
+                INSERT INTO tickets
+                (guild_id, channel_id, user_id, category, status, created_at)
+                VALUES (?, ?, ?, ?, 'open', ?)
+                """,
+                (guild_id, channel_id, user_id, category, created_at),
+            )
         return await self.store.insert(
             """
             INSERT INTO tickets
@@ -83,15 +93,7 @@ class TicketRepository(BaseRepository):
              ticket_number, subject)
             VALUES (?, ?, ?, ?, 'open', ?, ?, ?)
             """,
-            (
-                guild_id,
-                channel_id,
-                user_id,
-                category,
-                created_at,
-                ticket_number,
-                subject,
-            ),
+            (guild_id, channel_id, user_id, category, created_at, ticket_number, subject),
         )
 
     async def close(self, channel_id: int) -> None:
@@ -131,18 +133,11 @@ class TicketRepository(BaseRepository):
         )
 
     async def delete_by_channel(self, channel_id: int) -> None:
-        await self.store.execute(
-            "DELETE FROM tickets WHERE channel_id=?",
-            (channel_id,),
-        )
+        await self.store.execute("DELETE FROM tickets WHERE channel_id=?", (channel_id,))
 
     async def get_settings(self, guild_id: int):
         return await self.store.fetchone(
-            """
-            SELECT category_id, staff_role_id
-            FROM ticket_settings
-            WHERE guild_id=?
-            """,
+            "SELECT category_id, staff_role_id FROM ticket_settings WHERE guild_id=?",
             (guild_id,),
         )
 
@@ -209,13 +204,5 @@ class TicketRepository(BaseRepository):
             (ticket_id, guild_id, channel_id, actor_id, action, detail, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (
-                ticket_id,
-                guild_id,
-                channel_id,
-                actor_id,
-                action,
-                detail,
-                datetime.now(JST).isoformat(),
-            ),
+            (ticket_id, guild_id, channel_id, actor_id, action, detail, datetime.now(JST).isoformat()),
         )
