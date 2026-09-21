@@ -6,6 +6,7 @@ from typing import Awaitable, Callable, Sequence
 import discord
 
 from services.capability_discovery import DiscoveryCandidate
+from services.discovery_selection_executor import execute_discovery_selection
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,10 +24,10 @@ SelectionCallback = Callable[
 class CapabilityCandidateView(discord.ui.View):
     """Discovery panel gated by an explicit requester selection.
 
-    By default this remains selection-only. A caller may provide ``on_select``
-    to execute an already-approved direct-execution path after the requesting
-    user explicitly selects a capability. The view itself still owns no
-    dispatcher, handler registry, or database reference.
+    Production discovery uses the approved direct-execution adapter by default.
+    Callers may explicitly pass ``on_select=None`` to retain the earlier
+    selection-only behavior. The view itself owns no dispatcher, handler
+    registry, or database reference.
     """
 
     def __init__(
@@ -35,7 +36,7 @@ class CapabilityCandidateView(discord.ui.View):
         *,
         requester_id: int,
         timeout: float = 60.0,
-        on_select: SelectionCallback | None = None,
+        on_select: SelectionCallback | None = execute_discovery_selection,
     ) -> None:
         super().__init__(timeout=timeout)
         self.requester_id = requester_id
