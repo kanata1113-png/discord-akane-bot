@@ -24,7 +24,7 @@ async def test_unversioned_current_database_is_adopted_without_data_loss(tmp_pat
 
     applied = await run_migrations(str(db_path))
 
-    assert [migration.version for migration in applied] == [1]
+    assert [migration.version for migration in applied] == [1, 2]
     assert await get_schema_version(str(db_path)) == LATEST_SCHEMA_VERSION
 
     with sqlite3.connect(db_path) as connection:
@@ -58,7 +58,7 @@ async def test_migrations_are_idempotent(tmp_path):
             f"SELECT COUNT(*) FROM {MIGRATION_TABLE}"
         ).fetchone()[0]
 
-    assert count == 1
+    assert count == 2
 
 
 @pytest.mark.asyncio
@@ -90,8 +90,8 @@ async def test_failed_migration_rolls_back_version_record(tmp_path, monkeypatch)
         )
         raise RuntimeError("intentional migration failure")
 
-    migration_v2 = Migration(
-        version=2,
+    migration_v3 = Migration(
+        version=3,
         name="intentional_failure",
         apply=failing_migration,
     )
@@ -99,16 +99,16 @@ async def test_failed_migration_rolls_back_version_record(tmp_path, monkeypatch)
     monkeypatch.setattr(
         db_migrations,
         "MIGRATIONS",
-        db_migrations.MIGRATIONS + (migration_v2,),
+        db_migrations.MIGRATIONS + (migration_v3,),
     )
-    monkeypatch.setattr(db_migrations, "LATEST_SCHEMA_VERSION", 2)
+    monkeypatch.setattr(db_migrations, "LATEST_SCHEMA_VERSION", 3)
 
     with pytest.raises(RuntimeError, match="intentional migration failure"):
         await db_migrations.run_migrations(str(db_path))
 
     with sqlite3.connect(db_path) as connection:
-        recorded_v2 = connection.execute(
-            f"SELECT COUNT(*) FROM {MIGRATION_TABLE} WHERE version=2"
+        recorded_v3 = connection.execute(
+            f"SELECT COUNT(*) FROM {MIGRATION_TABLE} WHERE version=3"
         ).fetchone()[0]
         rolled_back_table = connection.execute(
             """
@@ -118,7 +118,7 @@ async def test_failed_migration_rolls_back_version_record(tmp_path, monkeypatch)
             """
         ).fetchone()[0]
 
-    assert recorded_v2 == 0
+    assert recorded_v3 == 0
     assert rolled_back_table == 0
 
 
