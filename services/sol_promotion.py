@@ -27,7 +27,6 @@ class SolPromotionGate:
         complexity = sum(1 for x in cls.COMPLEX if x in text)
         if explicit and (complexity >= 1 or len(text) >= 120):
             return selection, PromotionDecision(True, "explicit_deep_complexity")
-        tier = selection.__class__
         return replace(
             selection,
             model=Config.CHAT_MODEL,
