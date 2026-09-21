@@ -14,6 +14,10 @@ from discord.ext import commands
 
 from config import Config, JST
 from views.event_view import EventView
+from services.progression_capabilities import (
+    build_progression_pilot_dispatcher,
+    dispatch_level,
+)
 
 
 logger = logging.getLogger(
@@ -29,6 +33,9 @@ class GeneralCog(commands.Cog):
     ):
 
         self.bot = bot
+        self._capability_dispatcher = build_progression_pilot_dispatcher(
+            getattr(bot, "db", None)
+        )
 
     # ==========================================================================
     # Helpers
@@ -677,9 +684,18 @@ class GeneralCog(commands.Cog):
 
         try:
 
-            info = await self.bot.db.get_level_info(
-                interaction.user.id
+            result = await dispatch_level(
+                self._capability_dispatcher,
+                user_id=interaction.user.id,
+                guild_id=(
+                    interaction.guild.id
+                    if interaction.guild
+                    else None
+                ),
+                channel_id=interaction.channel_id
             )
+
+            info = result.value
 
             await interaction.response.send_message(
                 (
