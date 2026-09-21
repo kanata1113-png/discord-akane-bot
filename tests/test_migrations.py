@@ -24,7 +24,7 @@ async def test_unversioned_current_database_is_adopted_without_data_loss(tmp_pat
 
     applied = await run_migrations(str(db_path))
 
-    assert [migration.version for migration in applied] == [1]
+    assert [migration.version for migration in applied] == [1, 2]
     assert await get_schema_version(str(db_path)) == LATEST_SCHEMA_VERSION
 
     with sqlite3.connect(db_path) as connection:
@@ -32,12 +32,19 @@ async def test_unversioned_current_database_is_adopted_without_data_loss(tmp_pat
             "SELECT user_id, xp, level FROM users WHERE user_id=?",
             (123,),
         ).fetchone()
-        migration_row = connection.execute(
-            f"SELECT version, name FROM {MIGRATION_TABLE}"
-        ).fetchone()
+        migration_rows = connection.execute(
+            f"SELECT version, name FROM {MIGRATION_TABLE} ORDER BY version"
+        ).fetchall()
+        ticket_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(tickets)").fetchall()
+        }
 
     assert user_row == (123, 50, 2)
-    assert migration_row == (1, "baseline_v34_schema")
+    assert migration_rows == [
+        (1, "baseline_v34_schema"),
+        (2, "native_ticket_v2"),
+    ]
+    assert {"ticket_number", "subject", "claimed_by", "deleted_at"} <= ticket_columns
 
 
 @pytest.mark.asyncio
@@ -49,7 +56,7 @@ async def test_migrations_are_idempotent(tmp_path):
     first = await run_migrations(str(db_path))
     second = await run_migrations(str(db_path))
 
-    assert [migration.version for migration in first] == [1]
+    assert [migration.version for migration in first] == [1, 2]
     assert second == []
     assert await get_schema_version(str(db_path)) == LATEST_SCHEMA_VERSION
 
@@ -58,7 +65,33 @@ async def test_migrations_are_idempotent(tmp_path):
             f"SELECT COUNT(*) FROM {MIGRATION_TABLE}"
         ).fetchone()[0]
 
-    assert count == 1
+    assert count == 2
+
+
+@pytest.mark.asyncio
+async def test_native_ticket_migration_creates_additive_tables(tmp_path):
+    db_path = tmp_path / "akane.db"
+    manager = DatabaseManager(str(db_path))
+    await manager.init()
+    await run_migrations(str(db_path))
+
+    with sqlite3.connect(db_path) as connection:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        indexes = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'"
+            ).fetchall()
+        }
+
+    assert {"ticket_settings", "ticket_counters", "ticket_members", "ticket_audit"} <= tables
+    assert "idx_ticket_guild_number" in indexes
+    assert "idx_ticket_audit_ticket" in indexes
 
 
 @pytest.mark.asyncio
@@ -90,8 +123,8 @@ async def test_failed_migration_rolls_back_version_record(tmp_path, monkeypatch)
         )
         raise RuntimeError("intentional migration failure")
 
-    migration_v2 = Migration(
-        version=2,
+    migration_v3 = Migration(
+        version=3,
         name="intentional_failure",
         apply=failing_migration,
     )
@@ -99,16 +132,16 @@ async def test_failed_migration_rolls_back_version_record(tmp_path, monkeypatch)
     monkeypatch.setattr(
         db_migrations,
         "MIGRATIONS",
-        db_migrations.MIGRATIONS + (migration_v2,),
+        db_migrations.MIGRATIONS + (migration_v3,),
     )
-    monkeypatch.setattr(db_migrations, "LATEST_SCHEMA_VERSION", 2)
+    monkeypatch.setattr(db_migrations, "LATEST_SCHEMA_VERSION", 3)
 
     with pytest.raises(RuntimeError, match="intentional migration failure"):
         await db_migrations.run_migrations(str(db_path))
 
     with sqlite3.connect(db_path) as connection:
-        recorded_v2 = connection.execute(
-            f"SELECT COUNT(*) FROM {MIGRATION_TABLE} WHERE version=2"
+        recorded_v3 = connection.execute(
+            f"SELECT COUNT(*) FROM {MIGRATION_TABLE} WHERE version=3"
         ).fetchone()[0]
         rolled_back_table = connection.execute(
             """
@@ -118,7 +151,7 @@ async def test_failed_migration_rolls_back_version_record(tmp_path, monkeypatch)
             """
         ).fetchone()[0]
 
-    assert recorded_v2 == 0
+    assert recorded_v3 == 0
     assert rolled_back_table == 0
 
 
