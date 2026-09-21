@@ -47,6 +47,15 @@ def safe_channel_name(
     return result[:30]
 
 
+
+
+def is_ticket_staff(member: discord.Member) -> bool:
+    if member.guild_permissions.administrator:
+        return True
+    if Config.TICKET_STAFF_ROLE_ID:
+        return any(role.id == Config.TICKET_STAFF_ROLE_ID for role in member.roles)
+    return False
+
 # ==============================================================================
 # Transcript
 # ==============================================================================
@@ -915,6 +924,58 @@ class TicketCloseView(
         )
 
 
+    @discord.ui.button(
+        label="担当する",
+        style=discord.ButtonStyle.primary,
+        emoji="🙋",
+        custom_id="ticket_claim_button",
+    )
+    async def claim(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not isinstance(interaction.user, discord.Member) or not is_ticket_staff(interaction.user):
+            await interaction.response.send_message("この操作はTicket担当者だけやで。", ephemeral=True)
+            return
+        await self.bot.db.claim_ticket(interaction.channel.id, interaction.user.id)
+        await interaction.response.send_message(
+            f"🙋 {interaction.user.mention} がこのTicketを担当するで。",
+        )
+
+    @discord.ui.button(
+        label="名前変更",
+        style=discord.ButtonStyle.secondary,
+        emoji="✏️",
+        custom_id="ticket_rename_button",
+    )
+    async def rename_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not isinstance(interaction.user, discord.Member) or not is_ticket_staff(interaction.user):
+            await interaction.response.send_message("この操作はTicket担当者だけやで。", ephemeral=True)
+            return
+        await interaction.response.send_modal(TicketRenameModal())
+
+    @discord.ui.button(
+        label="メンバー追加",
+        style=discord.ButtonStyle.secondary,
+        emoji="➕",
+        custom_id="ticket_add_member_button",
+    )
+    async def add_member(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not isinstance(interaction.user, discord.Member) or not is_ticket_staff(interaction.user):
+            await interaction.response.send_message("この操作はTicket担当者だけやで。", ephemeral=True)
+            return
+        await interaction.response.send_modal(TicketMemberModal(add=True))
+
+    @discord.ui.button(
+        label="メンバー削除",
+        style=discord.ButtonStyle.secondary,
+        emoji="➖",
+        custom_id="ticket_remove_member_button",
+    )
+    async def remove_member(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not isinstance(interaction.user, discord.Member) or not is_ticket_staff(interaction.user):
+            await interaction.response.send_message("この操作はTicket担当者だけやで。", ephemeral=True)
+            return
+        await interaction.response.send_modal(TicketMemberModal(add=False))
+
+
 # ==============================================================================
 # Ticket Close Confirmation
 # ==============================================================================
@@ -1289,3 +1350,117 @@ class TicketCloseConfirmView(
         )
 
         self.stop()
+
+
+class TicketRenameModal(discord.ui.Modal, title="Ticketの名前を変更"):
+    name = discord.ui.TextInput(
+        label="新しい名前",
+        placeholder="例: 配信イベントについて",
+        min_length=1,
+        max_length=70,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        safe = safe_channel_name(str(self.name.value))
+        await interaction.channel.edit(
+            name=f"ticket-{safe}",
+            reason=f"Ticket renamed by {interaction.user}",
+        )
+        await interaction.response.send_message(
+            f"✏️ Ticket名を `{interaction.channel.name}` に変更したで。",
+            ephemeral=True,
+        )
+
+
+class TicketMemberModal(discord.ui.Modal):
+    member = discord.ui.TextInput(
+        label="ユーザーID / メンション",
+        placeholder="123456789012345678",
+        min_length=1,
+        max_length=40,
+    )
+
+    def __init__(self, *, add: bool) -> None:
+        super().__init__(title="メンバー追加" if add else "メンバー削除")
+        self.add = add
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        raw = str(self.member.value).strip().replace("<@", "").replace("!", "").replace(">", "")
+        if not raw.isdigit() or interaction.guild is None:
+            await interaction.response.send_message("ユーザーIDかメンションを入れてな。", ephemeral=True)
+            return
+        member = interaction.guild.get_member(int(raw))
+        if member is None:
+            await interaction.response.send_message("そのメンバーが見つからへんかったで。", ephemeral=True)
+            return
+        if self.add:
+            await interaction.channel.set_permissions(
+                member,
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                attach_files=True,
+                reason=f"Ticket member added by {interaction.user}",
+            )
+            text = f"➕ {member.mention} をTicketに追加したで。"
+        else:
+            await interaction.channel.set_permissions(
+                member,
+                overwrite=None,
+                reason=f"Ticket member removed by {interaction.user}",
+            )
+            text = f"➖ {member.mention} をTicketから外したで。"
+        await interaction.response.send_message(text, ephemeral=True)
+
+
+class TicketClosedView(discord.ui.View):
+    def __init__(self, bot):
+        super().__init__(timeout=None)
+        self.bot = bot
+
+    @discord.ui.button(
+        label="再開",
+        style=discord.ButtonStyle.success,
+        emoji="🔓",
+        custom_id="ticket_reopen_button",
+    )
+    async def reopen(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not isinstance(interaction.user, discord.Member) or not is_ticket_staff(interaction.user):
+            await interaction.response.send_message("再開できるんはTicket担当者だけやで。", ephemeral=True)
+            return
+        ticket = await self.bot.db.get_ticket_by_channel(interaction.channel.id)
+        if not ticket or ticket[4] != "closed":
+            await interaction.response.send_message("このTicketは閉じられてへんで。", ephemeral=True)
+            return
+        await self.bot.db.reopen_ticket(interaction.channel.id)
+        owner = interaction.guild.get_member(ticket[2]) if interaction.guild else None
+        if owner:
+            await interaction.channel.set_permissions(
+                owner,
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                attach_files=True,
+                reason=f"Ticket reopened by {interaction.user}",
+            )
+        await interaction.channel.edit(
+            name=f"ticket-{int(ticket[0]):04d}",
+            reason=f"Ticket reopened by {interaction.user}",
+        )
+        await interaction.response.send_message(
+            "🔓 Ticketを再開したで。",
+            view=TicketCloseView(self.bot),
+        )
+
+    @discord.ui.button(
+        label="完全削除",
+        style=discord.ButtonStyle.danger,
+        emoji="🗑️",
+        custom_id="ticket_delete_button",
+    )
+    async def delete(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not isinstance(interaction.user, discord.Member) or not is_ticket_staff(interaction.user):
+            await interaction.response.send_message("削除できるんはTicket担当者だけやで。", ephemeral=True)
+            return
+        await interaction.response.send_message("🗑️ Ticketを完全削除するで。", ephemeral=True)
+        await interaction.channel.delete(reason=f"Ticket deleted by {interaction.user}")
