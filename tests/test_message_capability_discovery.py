@@ -50,6 +50,35 @@ async def test_action_request_composes_local_and_rerank_layers():
 
 
 @pytest.mark.asyncio
+async def test_native_ticket_action_is_local_and_never_needs_jev_authorization():
+    reranker = RecordingReranker()
+
+    result = await discover_message_capabilities(
+        "管理人に問い合わせたい",
+        reranker=reranker,
+    )
+
+    assert result.should_show_panel is True
+    assert result.source == "local_ticket_intent"
+    assert result.confidence == 1.0
+    assert [item.capability_id for item in result.candidates] == ["ticket_create"]
+    assert reranker.calls == []
+
+
+@pytest.mark.asyncio
+async def test_ticket_explanation_request_remains_normal_chat():
+    reranker = RecordingReranker()
+
+    result = await discover_message_capabilities(
+        "Ticket Toolとは何？説明して",
+        reranker=reranker,
+    )
+
+    assert result.should_show_panel is False
+    assert reranker.calls == []
+
+
+@pytest.mark.asyncio
 async def test_no_local_candidate_preserves_normal_chat_fallback():
     reranker = RecordingReranker()
 
