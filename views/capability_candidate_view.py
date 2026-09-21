@@ -13,6 +13,7 @@ from views.community_write_view import (
     PollCreateModal,
 )
 from views.parameterized_capability_view import ParameterizedCapabilityEntryView
+from views.ticket_native_v4 import TicketCreateEntryView
 from views.write_capability_view import (
     ForgetScopeView,
     RemindModal,
@@ -21,10 +22,13 @@ from views.write_capability_view import (
 )
 
 
-# Frozen Release D contract.
+# Historical groups remain stable; Ticket is the dogfood-era native write flow.
 WRITE_CONFIRM_DISCOVERY_IDS = frozenset({"title_set", "memory_forget", "remind"})
 COMMUNITY_WRITE_DISCOVERY_IDS = frozenset({"event_create", "poll_create"})
-RELEASE_E_WRITE_CONFIRM_DISCOVERY_IDS = frozenset({*WRITE_CONFIRM_DISCOVERY_IDS, *COMMUNITY_WRITE_DISCOVERY_IDS})
+NATIVE_TICKET_DISCOVERY_IDS = frozenset({"ticket_create"})
+RELEASE_E_WRITE_CONFIRM_DISCOVERY_IDS = frozenset(
+    {*WRITE_CONFIRM_DISCOVERY_IDS, *COMMUNITY_WRITE_DISCOVERY_IDS, *NATIVE_TICKET_DISCOVERY_IDS}
+)
 PARAMETERIZED_DISCOVERY_IDS = ParameterizedCapabilityEntryView.SUPPORTED
 
 
@@ -105,10 +109,22 @@ class CapabilityCandidateView(discord.ui.View):
             item.disabled = True
         self.stop()
 
-        # J1: selecting a WRITE_CONFIRM candidate starts argument/scope collection
-        # immediately. We intentionally do not show another identical capability
-        # button. The final mutation confirmation remains unchanged.
+        # Selecting a WRITE_CONFIRM candidate starts argument/scope collection
+        # immediately. It never skips the final mutation confirmation.
         if candidate.capability_id in RELEASE_E_WRITE_CONFIRM_DISCOVERY_IDS:
+            if candidate.capability_id == "ticket_create":
+                await interaction.response.edit_message(
+                    content=(
+                        "🎫 管理人・運営への問い合わせやな！茜が受付するで。\n"
+                        "まず種類を選んでな👇 送信前に内容確認もできるで👌"
+                    ),
+                    view=TicketCreateEntryView(
+                        bot=interaction.client,
+                        requester_id=self.requester_id,
+                    ),
+                )
+                return
+
             if candidate.capability_id == "event_create":
                 await interaction.response.edit_message(
                     content=(
@@ -156,8 +172,6 @@ class CapabilityCandidateView(discord.ui.View):
                 )
                 return
 
-            # Fail closed if a new WRITE_CONFIRM capability is added without a
-            # dedicated direct handoff path.
             await interaction.response.edit_message(
                 content=(
                     f"✨ **{candidate.name}** やな！\n"
@@ -179,9 +193,6 @@ class CapabilityCandidateView(discord.ui.View):
             )
             return
 
-        # Release F parameter collection is the production default path. A custom
-        # injected selection callback remains authoritative for tests/adapters and
-        # preserves the pre-F fail-closed contract.
         if (
             candidate.capability_id in PARAMETERIZED_DISCOVERY_IDS
             and self._on_select is execute_discovery_selection
@@ -262,8 +273,16 @@ def single_candidate_handoff(
     candidate: DiscoveryCandidate,
     *,
     requester_id: int,
+    bot=None,
 ) -> tuple[str, discord.ui.View]:
     """Build operation-specific entry UI for a single unambiguous candidate."""
+
+    if candidate.capability_id == "ticket_create" and bot is not None:
+        return (
+            "🎫 管理人・運営への問い合わせやな！茜が受付するで。\n"
+            "種類を選んで、問い合わせ内容を書いてな👇 送る前に確認できるで👌",
+            TicketCreateEntryView(bot=bot, requester_id=requester_id),
+        )
 
     if candidate.capability_id == "event_create":
         return (
