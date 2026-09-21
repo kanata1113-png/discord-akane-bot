@@ -19,7 +19,6 @@ from services.user_capabilities import (
 )
 
 
-# Capabilities already represented by an executable CapabilitySpec in Release C.
 MIGRATED_GENERAL_CAPABILITY_SPECS = (
     TRANSLATE_SPEC,
     DEFINE_SPEC,
@@ -39,7 +38,6 @@ MIGRATED_GENERAL_CAPABILITY_SPECS = (
 )
 
 
-# Preserve the exact B2 discovery surface until a dedicated expansion gate lands.
 DISCOVERY_PILOT_SPECS = (
     LEVEL_SPEC,
     WEEKLY_SPEC,
@@ -50,13 +48,26 @@ DISCOVERY_PILOT_SPECS = (
 )
 
 
-def migrated_general_specs():
-    """Return the immutable Release C migrated general capability catalog."""
+# Release C expands candidate discovery only. Direct execution remains governed
+# by discovery_execution_policy.py and therefore stays fail-closed.
+DISCOVERY_RELEASE_C_SPECS = (
+    *DISCOVERY_PILOT_SPECS,
+    LEADERBOARD_SPEC,
+    TITLES_SPEC,
+    MEMORY_STATUS_SPEC,
+    TRANSLATE_SPEC,
+    DEFINE_SPEC,
+    SUMMARY_SPEC,
+)
 
+
+def migrated_general_specs():
     return MIGRATED_GENERAL_CAPABILITY_SPECS
 
 
 def discovery_pilot_specs():
-    """Return the currently approved natural-language discovery surface."""
-
     return DISCOVERY_PILOT_SPECS
+
+
+def discovery_release_c_specs():
+    return DISCOVERY_RELEASE_C_SPECS
