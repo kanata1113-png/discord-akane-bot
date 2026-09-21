@@ -144,6 +144,12 @@ async def _native_ticket_lifecycle_v2(db: aiosqlite.Connection) -> None:
         await db.execute(
             "ALTER TABLE tickets ADD COLUMN assigned_staff_id INTEGER"
         )
+    cursor = await db.execute('PRAGMA table_info("guild_settings")')
+    guild_columns = {str(row[1]) for row in await cursor.fetchall()}
+    if "ticket_staff_role_id" not in guild_columns:
+        await db.execute(
+            "ALTER TABLE guild_settings ADD COLUMN ticket_staff_role_id INTEGER"
+        )
 
 
 MIGRATIONS = (
