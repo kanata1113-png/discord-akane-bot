@@ -9,6 +9,7 @@ from services.capability_discovery import DiscoveryCandidate
 from services.discovery_selection_executor import execute_discovery_selection
 from views.community_write_view import CommunityWriteEntryView
 from views.parameterized_capability_view import ParameterizedCapabilityEntryView
+from views.ticket_view import TicketCreateEntryView
 from views.write_capability_view import WriteCapabilityEntryView
 
 
@@ -32,7 +33,7 @@ SelectionCallback = Callable[[discord.Interaction, CandidateSelection], Awaitabl
 class CapabilityCandidateView(discord.ui.View):
     """Requester-only discovery panel.
 
-    A capability button now starts that capability immediately. The old extra
+    A capability button starts that capability immediately. The old extra
     "same capability again" entry button was redundant and has been removed.
     State-changing operations still have their separate final confirmation.
     """
@@ -106,6 +107,18 @@ class CapabilityCandidateView(discord.ui.View):
         for item in self.children:
             item.disabled = True
         self.stop()
+
+        # Ticket is a native interaction entry outside the 18-capability slash
+        # catalog. Selection opens content collection; no channel is created
+        # until the later explicit final confirmation.
+        if candidate.capability_id == "ticket_create":
+            view = TicketCreateEntryView(
+                interaction.client,
+                requester_id=self.requester_id,
+                category_key="admin",
+            )
+            await view.begin(interaction)
+            return
 
         # Selecting a discovered write capability only starts argument/scope
         # collection. Mutation is still impossible until its later confirmation.
