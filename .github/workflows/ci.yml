@@ -42,8 +42,14 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
 
+      - name: Validate installed dependencies
+        run: python -m pip check
+
       - name: Compile all Python modules
         run: python -m compileall -q .
+
+      - name: Run repository safety audit
+        run: python scripts/pre_dogfood_static_audit.py
 
       - name: Run characterization tests
         run: pytest -q
