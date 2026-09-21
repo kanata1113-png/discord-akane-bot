@@ -32,16 +32,19 @@ class AiManager:
         )
 
         logger.info(
-            "AI platform initialized | version=2.0-dev | "
+            "AI platform initialized | version=2.4-dev | "
             "jev_mode=%s | jev_configured=%s | "
             "confidence_threshold=%.2f | timeout_seconds=%.2f | "
-            "context_hints=%s | adaptive_budget=%s",
+            "context_hints=%s | adaptive_budget_v1=%s | "
+            "intent_controller=%s | budget_controller_v2=%s",
             self.jev_router.mode,
             self.jev_router.is_configured,
             self.jev_router.confidence_threshold,
             self.jev_router.timeout_seconds,
             self.routing_policy.context_hints_enabled,
             self.routing_policy.adaptive_budget_enabled,
+            self.orchestrator.intent_controller.enabled,
+            self.orchestrator.budget_controller.enabled,
         )
 
     def _policy(self) -> RoutingPolicy:
