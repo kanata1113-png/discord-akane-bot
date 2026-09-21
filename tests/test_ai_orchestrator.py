@@ -97,7 +97,18 @@ def test_response_style_uses_compact_discord_markdown():
     assert "おおむね1680文字以内" in prompt
     assert "絵文字" in prompt
     assert "Markdown" in prompt
+    assert "Markdown表より箇条書きを優先" in prompt
+    assert "ユーザーが表を明示的に求めた場合は表を使ってよい" in prompt
+    assert "短い導入 → 箇条書き → 必要なら短い結論" in prompt
+    assert "**太字の短いラベル**" in prompt
     assert "# / ## / ### は使わない" in prompt
-    assert "**太字**" in prompt
+    assert "原則1階層、必要な場合のみ2階層" in prompt
     assert "空行を何行も連続させない" in prompt
     assert "ユーザーが長さ、形式、詳しさを明示した場合" in prompt
+
+
+def test_regulation_prompt_avoids_policy_recommendation_voice():
+    prompt = PromptBuilder.chat_system_prompt(regulation_mode=True, model=Config.CHAT_MODEL)
+
+    assert "茜自身の賛否や政策的な推奨を結論として示さず" in prompt
+    assert "主要な選択肢、根拠、トレードオフを中立的に整理" in prompt
