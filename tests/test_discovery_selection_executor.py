@@ -9,18 +9,34 @@ from services.discovery_execution_policy import (
 from services.discovery_selection_executor import execute_discovery_selection
 
 
-def test_direct_execution_policy_is_fail_closed_and_excludes_fortune_rankings():
+def test_direct_execution_policy_is_fail_closed_and_excludes_side_effect_or_argumentful_paths():
     assert DIRECT_EXECUTION_CAPABILITY_IDS == frozenset(
-        {"level", "weekly", "profile", "achievements"}
+        {
+            "level",
+            "leaderboard",
+            "weekly",
+            "profile",
+            "achievements",
+            "memory_status",
+        }
     )
-    assert can_direct_execute_discovery_capability("level") is True
-    assert can_direct_execute_discovery_capability("weekly") is True
-    assert can_direct_execute_discovery_capability("profile") is True
-    assert can_direct_execute_discovery_capability("achievements") is True
-    assert can_direct_execute_discovery_capability("rankings") is False
-    assert can_direct_execute_discovery_capability("fortune") is False
-    assert can_direct_execute_discovery_capability("admin") is False
-    assert can_direct_execute_discovery_capability("unknown") is False
+    for capability_id in DIRECT_EXECUTION_CAPABILITY_IDS:
+        assert can_direct_execute_discovery_capability(capability_id) is True
+
+    for capability_id in (
+        "rankings",
+        "fortune",
+        "titles",
+        "translate",
+        "define",
+        "summary",
+        "remind",
+        "memory_forget",
+        "title_set",
+        "admin",
+        "unknown",
+    ):
+        assert can_direct_execute_discovery_capability(capability_id) is False
 
 
 class FakeCommand:
@@ -40,8 +56,15 @@ class FakeCommand:
 
 class FakeGeneralCog:
     def __init__(self, calls):
-        for capability_id in ("level", "weekly", "profile", "achievements"):
+        for capability_id in (
+            "level",
+            "leaderboard",
+            "weekly",
+            "profile",
+            "achievements",
+        ):
             setattr(self, capability_id, FakeCommand(capability_id, calls))
+        self.memory = FakeCommand("memory_status", calls)
 
 
 class FakeClient:
@@ -65,9 +88,11 @@ def interaction_with(cog, user_id=123):
     ("capability_id", "expected_member_marker"),
     [
         ("level", "not-passed"),
+        ("leaderboard", "not-passed"),
         ("weekly", "not-passed"),
         ("profile", None),
         ("achievements", None),
+        ("memory_status", "not-passed"),
     ],
 )
 async def test_executor_reuses_existing_general_cog_callbacks(
@@ -88,7 +113,21 @@ async def test_executor_reuses_existing_general_cog_callbacks(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("capability_id", ["rankings", "fortune", "unknown"])
+@pytest.mark.parametrize(
+    "capability_id",
+    [
+        "rankings",
+        "fortune",
+        "titles",
+        "translate",
+        "define",
+        "summary",
+        "remind",
+        "memory_forget",
+        "title_set",
+        "unknown",
+    ],
+)
 async def test_executor_never_resolves_cog_for_non_allowlisted_capability(
     capability_id,
 ):
