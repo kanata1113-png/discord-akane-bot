@@ -478,6 +478,40 @@ class TicketCategorySelect(
                 interaction.guild.me
             )
 
+            staff_role = (
+                interaction.guild.get_role(Config.TICKET_STAFF_ROLE_ID)
+                if Config.TICKET_STAFF_ROLE_ID
+                else None
+            )
+
+            category = discord.utils.get(
+                interaction.guild.categories,
+                name=Config.TICKET_CATEGORY_NAME,
+            )
+            if category is None:
+                category_overwrites = {
+                    interaction.guild.default_role: discord.PermissionOverwrite(
+                        view_channel=False
+                    ),
+                    bot_member: discord.PermissionOverwrite(
+                        view_channel=True,
+                        send_messages=True,
+                        read_message_history=True,
+                        manage_channels=True,
+                    ),
+                }
+                if staff_role is not None:
+                    category_overwrites[staff_role] = discord.PermissionOverwrite(
+                        view_channel=True,
+                        send_messages=True,
+                        read_message_history=True,
+                    )
+                category = await interaction.guild.create_category(
+                    Config.TICKET_CATEGORY_NAME,
+                    overwrites=category_overwrites,
+                    reason="Akane Native Ticket category",
+                )
+
             overwrites = {
                 interaction.guild.default_role:
                     discord.PermissionOverwrite(
@@ -500,26 +534,22 @@ class TicketCategorySelect(
                         manage_channels=True
                     ),
             }
-
-            username = (
-                safe_channel_name(
-                    interaction.user.name
+            if staff_role is not None:
+                overwrites[staff_role] = discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    read_message_history=True,
+                    attach_files=True,
                 )
-            )
-
-            channel_name = (
-                f"ticket-"
-                f"{username}-"
-                f"{str(interaction.user.id)[-4:]}"
-            )
 
             channel = (
                 await interaction.guild
                 .create_text_channel(
-                    channel_name,
+                    "ticket-pending",
+                    category=category,
                     overwrites=overwrites,
                     reason=(
-                        "Akane Bot Ticket"
+                        "Akane Native Ticket"
                     )
                 )
             )
@@ -528,7 +558,7 @@ class TicketCategorySelect(
             # DB Ticket
             # ==================================================================
 
-            await self.bot.db.create_ticket(
+            ticket_id = await self.bot.db.create_ticket(
                 guild_id=(
                     interaction.guild.id
                 ),
@@ -539,6 +569,10 @@ class TicketCategorySelect(
                     interaction.user.id
                 ),
                 category=selected
+            )
+            await channel.edit(
+                name=f"ticket-{int(ticket_id):04d}",
+                reason="Akane Native Ticket ID assigned",
             )
 
             # ==================================================================
@@ -580,13 +614,13 @@ class TicketCategorySelect(
             embed.add_field(
                 name="Ticket ID",
                 value=(
-                    f"`{channel.id}`"
+                    f"`{ticket_id:04d}`"
                 ),
                 inline=False
             )
 
             embed.set_footer(
-                text="Akane Bot v32 Ticket"
+                text="Akane Native Ticket"
             )
 
             await channel.send(
