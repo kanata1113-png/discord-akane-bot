@@ -9,8 +9,8 @@ def manager_without_client():
 def test_normal_chat_route():
     model, effort, route = manager_without_client().select_chat_model("今日は何してたん？")
     assert (model, effort, route) == (
-        Config.CHAT_MODEL,
-        Config.CHAT_REASONING_EFFORT,
+        Config.FAST_MODEL,
+        Config.FAST_REASONING_EFFORT,
         "normal-chat",
     )
 
@@ -20,8 +20,8 @@ def test_regulation_route():
         "表現規制と憲法について教えて"
     )
     assert (model, effort, route) == (
-        Config.REASONING_MODEL,
-        Config.REASONING_EFFORT,
+        Config.CHAT_MODEL,
+        Config.CHAT_REASONING_EFFORT,
         "regulation",
     )
 
@@ -31,8 +31,8 @@ def test_reasoning_route():
         "この制度のメリットとデメリットを比較して"
     )
     assert (model, effort, route) == (
-        Config.REASONING_MODEL,
-        Config.REASONING_EFFORT,
+        Config.CHAT_MODEL,
+        Config.CHAT_REASONING_EFFORT,
         "reasoning",
     )
 
@@ -52,8 +52,8 @@ def test_deep_reasoning_keeps_medium_effort_for_budget():
 def test_long_question_route_at_350_characters():
     model, effort, route = manager_without_client().select_chat_model("あ" * 350)
     assert (model, effort, route) == (
-        Config.REASONING_MODEL,
-        Config.REASONING_EFFORT,
+        Config.CHAT_MODEL,
+        Config.CHAT_REASONING_EFFORT,
         "long-question",
     )
 
@@ -61,7 +61,7 @@ def test_long_question_route_at_350_characters():
 def test_short_question_below_boundary_stays_normal():
     model, effort, route = manager_without_client().select_chat_model("あ" * 349)
     assert (model, effort, route) == (
-        Config.CHAT_MODEL,
-        Config.CHAT_REASONING_EFFORT,
+        Config.FAST_MODEL,
+        Config.FAST_REASONING_EFFORT,
         "normal-chat",
     )
