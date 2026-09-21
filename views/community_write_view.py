@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import re
+from datetime import datetime
+
 import discord
 
 from views.write_capability_view import ConfirmActionView, RequesterOnlyView
@@ -49,27 +52,68 @@ async def _invoke_poll(
     await cog.poll.callback(cog, interaction, question, option1, option2, option3, option4)
 
 
-def _resolve_channel_id(guild: discord.Guild | None, value: str, *, event_type: str) -> int | None:
-    if guild is None:
+def _normalize_date(value: str) -> str | None:
+    text = value.strip().replace("-", "/").replace(".", "/")
+    match = re.fullmatch(r"(\d{4})/(\d{1,2})/(\d{1,2})", text)
+    if not match:
         return None
-    text = value.strip().replace("<#", "").replace(">", "")
-    if text.isdigit():
-        channel = guild.get_channel(int(text))
-        if channel is not None:
-            return channel.id
-    expected = discord.VoiceChannel if event_type == "voice" else discord.StageChannel
-    for channel in guild.channels:
-        if isinstance(channel, expected) and channel.name == value.strip().lstrip("#"):
-            return channel.id
-    return None
+    year, month, day = (int(part) for part in match.groups())
+    try:
+        checked = datetime(year, month, day)
+    except ValueError:
+        return None
+    return checked.strftime("%Y/%m/%d")
 
 
-class ExternalEventModal(discord.ui.Modal, title="イベント作成：その他/外部"):
-    event_name = discord.ui.TextInput(label="イベント名", min_length=1, max_length=100)
-    start = discord.ui.TextInput(label="開始（日本時間）", placeholder="YYYY/MM/DD HH:MM", min_length=16, max_length=16)
-    end = discord.ui.TextInput(label="終了（日本時間）", placeholder="YYYY/MM/DD HH:MM", min_length=16, max_length=16)
-    location = discord.ui.TextInput(label="開催場所・URL", min_length=1, max_length=100)
-    description = discord.ui.TextInput(label="説明（任意）", style=discord.TextStyle.paragraph, required=False, max_length=1000)
+def _normalize_time(value: str) -> str | None:
+    text = value.strip().replace("：", ":")
+    if re.fullmatch(r"\d{3,4}", text):
+        text = text.zfill(4)
+        text = f"{text[:2]}:{text[2:]}"
+    match = re.fullmatch(r"(\d{1,2}):(\d{2})", text)
+    if not match:
+        return None
+    hour, minute = (int(part) for part in match.groups())
+    if hour > 23 or minute > 59:
+        return None
+    return f"{hour:02d}:{minute:02d}"
+
+
+def _normalize_optional_end(value: str, *, start_date: str) -> str | None | bool:
+    """Return normalized datetime, None for blank, or False for invalid input."""
+
+    text = value.strip()
+    if not text:
+        return None
+
+    # Friendly same-day shorthand: "22:00" or "2200".
+    time_only = _normalize_time(text)
+    if time_only:
+        return f"{start_date} {time_only}"
+
+    # Full datetime accepts common separators and any amount of whitespace.
+    normalized = text.replace("-", "/").replace(".", "/").replace("　", " ")
+    match = re.fullmatch(r"(\d{4}/\d{1,2}/\d{1,2})\s+(\d{1,2}[:：]\d{2}|\d{3,4})", normalized)
+    if not match:
+        return False
+    date_part = _normalize_date(match.group(1))
+    time_part = _normalize_time(match.group(2))
+    if not date_part or not time_part:
+        return False
+    return f"{date_part} {time_part}"
+
+
+class ExternalEventModal(discord.ui.Modal, title="イベント作成：その他 / 外部"):
+    event_name = discord.ui.TextInput(label="イベント名", placeholder="例: 読書会", min_length=1, max_length=100)
+    start_date = discord.ui.TextInput(label="開始日（日本時間）", placeholder="例: 2026/09/22", min_length=8, max_length=10)
+    start_time = discord.ui.TextInput(label="開始時刻（日本時間）", placeholder="例: 18:00", min_length=4, max_length=5)
+    end = discord.ui.TextInput(
+        label="終了日時（日本時間）",
+        placeholder="同日なら 22:00 / 別日なら 2026/09/23 01:00",
+        min_length=4,
+        max_length=16,
+    )
+    location = discord.ui.TextInput(label="開催場所・URL", placeholder="例: 東京 / https://...", min_length=1, max_length=100)
 
     def __init__(self, *, requester_id: int) -> None:
         super().__init__()
@@ -77,29 +121,44 @@ class ExternalEventModal(discord.ui.Modal, title="イベント作成：その他
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         name = str(self.event_name.value).strip()
-        start = str(self.start.value).strip()
-        end = str(self.end.value).strip()
+        start_date = _normalize_date(str(self.start_date.value))
+        start_time = _normalize_time(str(self.start_time.value))
+        if not start_date:
+            await interaction.response.send_message("📅 開始日は `2026/09/22` のように入力してな。", ephemeral=True)
+            return
+        if not start_time:
+            await interaction.response.send_message("🕐 開始時刻は `18:00` のように入力してな。", ephemeral=True)
+            return
+
+        start = f"{start_date} {start_time}"
+        end = _normalize_optional_end(str(self.end.value), start_date=start_date)
+        if end is False:
+            await interaction.response.send_message(
+                "🕐 終了は同日なら `22:00`、別日なら `2026/09/23 01:00` のように入力してな。",
+                ephemeral=True,
+            )
+            return
+
         location = str(self.location.value).strip()
-        description = str(self.description.value).strip() or None
 
         async def execute(confirm_interaction: discord.Interaction) -> None:
             await _invoke_event(
                 confirm_interaction,
                 name=name,
                 start=start,
-                end=end,
+                end=str(end),
                 event_type="external",
                 location=location,
                 event_channel_id=None,
-                description=description,
+                description=None,
             )
 
         preview = (
-            f"📅 **{name}**\n"
-            f"開始: `{start}`\n終了: `{end}`\n"
-            f"場所: **{location}**\n"
-            + (f"説明: {description}\n" if description else "")
-            + "Discord公式スケジュールイベントとして作成する？"
+            f"🌐 **{name}**\n"
+            f"📅 開始: `{start}`\n"
+            f"🕐 終了: `{end}`\n"
+            f"📍 場所: **{location}**\n\n"
+            "この内容でDiscord公式イベントを作る？"
         )
         await interaction.response.send_message(
             preview,
@@ -113,53 +172,73 @@ class ExternalEventModal(discord.ui.Modal, title="イベント作成：その他
 
 
 class ChannelEventModal(discord.ui.Modal):
-    event_name = discord.ui.TextInput(label="イベント名", min_length=1, max_length=100)
-    start = discord.ui.TextInput(label="開始（日本時間）", placeholder="YYYY/MM/DD HH:MM", min_length=16, max_length=16)
-    end = discord.ui.TextInput(label="終了（任意・日本時間）", placeholder="YYYY/MM/DD HH:MM", required=False, max_length=16)
-    channel = discord.ui.TextInput(label="開催チャンネル名 / ID / メンション", min_length=1, max_length=100)
+    event_name = discord.ui.TextInput(label="イベント名", placeholder="例: 読書会", min_length=1, max_length=100)
+    start_date = discord.ui.TextInput(label="開始日（日本時間）", placeholder="例: 2026/09/22", min_length=8, max_length=10)
+    start_time = discord.ui.TextInput(label="開始時刻（日本時間）", placeholder="例: 18:00", min_length=4, max_length=5)
+    end = discord.ui.TextInput(
+        label="終了（任意・日本時間）",
+        placeholder="同日なら 22:00 / 別日なら 2026/09/23 01:00",
+        required=False,
+        max_length=16,
+    )
     description = discord.ui.TextInput(label="説明（任意）", style=discord.TextStyle.paragraph, required=False, max_length=1000)
 
-    def __init__(self, *, requester_id: int, event_type: str) -> None:
+    def __init__(self, *, requester_id: int, event_type: str, channel_id: int | None = None) -> None:
         title = "イベント作成：ボイス" if event_type == "voice" else "イベント作成：ステージ"
         super().__init__(title=title)
         self.requester_id = requester_id
         self.event_type = event_type
+        self.channel_id = channel_id
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        name = str(self.event_name.value).strip()
-        start = str(self.start.value).strip()
-        end = str(self.end.value).strip() or None
-        channel_text = str(self.channel.value).strip()
-        channel_id = _resolve_channel_id(interaction.guild, channel_text, event_type=self.event_type)
-        description = str(self.description.value).strip() or None
-        if channel_id is None:
-            kind = "ボイス" if self.event_type == "voice" else "ステージ"
+        if self.channel_id is None:
             await interaction.response.send_message(
-                f"指定した{kind}チャンネルが見つからへんかったで。名前・ID・メンションを確認してな。",
+                "🔊 開催する部屋を先に選んでな。チャンネルIDを覚える必要はないで。",
                 ephemeral=True,
             )
             return
+
+        name = str(self.event_name.value).strip()
+        start_date = _normalize_date(str(self.start_date.value))
+        start_time = _normalize_time(str(self.start_time.value))
+        if not start_date:
+            await interaction.response.send_message("📅 開始日は `2026/09/22` のように入力してな。", ephemeral=True)
+            return
+        if not start_time:
+            await interaction.response.send_message("🕐 開始時刻は `18:00` のように入力してな。", ephemeral=True)
+            return
+
+        start = f"{start_date} {start_time}"
+        end = _normalize_optional_end(str(self.end.value), start_date=start_date)
+        if end is False:
+            await interaction.response.send_message(
+                "🕐 終了は同日なら `22:00`、別日なら `2026/09/23 01:00` のように入力してな。",
+                ephemeral=True,
+            )
+            return
+
+        description = str(self.description.value).strip() or None
 
         async def execute(confirm_interaction: discord.Interaction) -> None:
             await _invoke_event(
                 confirm_interaction,
                 name=name,
                 start=start,
-                end=end,
+                end=str(end) if end else None,
                 event_type=self.event_type,
                 location=None,
-                event_channel_id=channel_id,
+                event_channel_id=self.channel_id,
                 description=description,
             )
 
-        kind = "ボイス" if self.event_type == "voice" else "ステージ"
+        kind = "🔊 ボイス" if self.event_type == "voice" else "🎙️ ステージ"
         preview = (
             f"📅 **{name}**\n"
             f"開始: `{start}`\n"
             + (f"終了: `{end}`\n" if end else "")
-            + f"形式: **{kind}** / <#{channel_id}>\n"
+            + f"形式: **{kind}** / <#{self.channel_id}>\n"
             + (f"説明: {description}\n" if description else "")
-            + "Discord公式スケジュールイベントとして作成する？"
+            + "\nこの内容でDiscord公式イベントを作る？"
         )
         await interaction.response.send_message(
             preview,
@@ -172,15 +251,61 @@ class ChannelEventModal(discord.ui.Modal):
         )
 
 
+class EventChannelSelect(discord.ui.ChannelSelect):
+    def __init__(self, *, requester_id: int, event_type: str) -> None:
+        channel_type = discord.ChannelType.voice if event_type == "voice" else discord.ChannelType.stage_voice
+        placeholder = "🔊 開催するボイスチャンネルを選んでな" if event_type == "voice" else "🎙️ 開催するステージを選んでな"
+        super().__init__(
+            placeholder=placeholder,
+            min_values=1,
+            max_values=1,
+            channel_types=[channel_type],
+            custom_id=f"event_channel:{event_type}",
+        )
+        self.requester_id = requester_id
+        self.event_type = event_type
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        selected = self.values[0]
+        channel_id = int(selected.id)
+        await interaction.message.edit(
+            content=f"✅ 開催場所は <#{channel_id}> やな。次にイベント内容を入力してな ✍️",
+            view=None,
+        )
+        await interaction.response.send_modal(
+            ChannelEventModal(
+                requester_id=self.requester_id,
+                event_type=self.event_type,
+                channel_id=channel_id,
+            )
+        )
+
+
+class EventChannelSelectView(RequesterOnlyView):
+    def __init__(self, *, requester_id: int, event_type: str) -> None:
+        super().__init__(requester_id=requester_id)
+        self.add_item(EventChannelSelect(requester_id=requester_id, event_type=event_type))
+        cancel = discord.ui.Button(label="キャンセル", style=discord.ButtonStyle.secondary, custom_id="event_channel:cancel")
+
+        async def cancel_callback(interaction: discord.Interaction) -> None:
+            self.cancelled = True
+            self.disable_all()
+            self.stop()
+            await interaction.response.edit_message(content="👌 キャンセルしたで。イベントは作ってへんで。", view=self)
+
+        cancel.callback = cancel_callback
+        self.add_item(cancel)
+
+
 class EventTypeChoiceView(RequesterOnlyView):
-    """Mirrors Discord's three Scheduled Event location choices."""
+    """Discord Scheduled Event wizard ordered by the server's common use."""
 
     def __init__(self, *, requester_id: int) -> None:
         super().__init__(requester_id=requester_id)
         choices = (
-            ("その他 / 外部", "external", discord.ButtonStyle.primary),
-            ("ボイス", "voice", discord.ButtonStyle.secondary),
-            ("ステージ", "stage", discord.ButtonStyle.secondary),
+            ("🔊 ボイス", "voice", discord.ButtonStyle.primary),
+            ("🎙️ ステージ", "stage", discord.ButtonStyle.secondary),
+            ("🌐 その他 / 外部", "external", discord.ButtonStyle.secondary),
         )
         for label, event_type, style in choices:
             button = discord.ui.Button(
@@ -192,16 +317,19 @@ class EventTypeChoiceView(RequesterOnlyView):
             async def callback(interaction: discord.Interaction, *, selected=event_type) -> None:
                 self.disable_all()
                 self.stop()
-                await interaction.message.edit(
-                    content=f"開催形式: **{selected}**\nDiscord公式の項目を入力してな。",
-                    view=self,
-                )
                 if selected == "external":
-                    await interaction.response.send_modal(ExternalEventModal(requester_id=self.requester_id))
-                else:
-                    await interaction.response.send_modal(
-                        ChannelEventModal(requester_id=self.requester_id, event_type=selected)
+                    await interaction.message.edit(
+                        content="🌐 その他 / 外部イベントやな。日付と時刻は別々に入力できるで ✍️",
+                        view=None,
                     )
+                    await interaction.response.send_modal(ExternalEventModal(requester_id=self.requester_id))
+                    return
+
+                label_text = "🔊 ボイス" if selected == "voice" else "🎙️ ステージ"
+                await interaction.response.edit_message(
+                    content=f"{label_text} イベントやな。まず開催する部屋を選んでな👇\nIDを入力する必要はないで。",
+                    view=EventChannelSelectView(requester_id=self.requester_id, event_type=selected),
+                )
 
             button.callback = callback
             self.add_item(button)
@@ -217,7 +345,7 @@ class EventTypeChoiceView(RequesterOnlyView):
             self.disable_all()
             self.stop()
             await interaction.response.edit_message(
-                content="キャンセル済みやで。イベントは作成してへんで。",
+                content="👌 キャンセルしたで。イベントは作ってへんで。",
                 view=self,
             )
 
@@ -248,7 +376,7 @@ class PollCreateModal(discord.ui.Modal, title="投票作成"):
 
         preview = " / ".join(item for item in (option1, option2, option3, option4) if item)
         await interaction.response.send_message(
-            f"**{question}**\n{preview}\nこの内容で投票を作る？",
+            f"📊 **{question}**\n{preview}\nこの内容で投票を作る？",
             view=ConfirmActionView(
                 requester_id=self.requester_id,
                 on_confirm=execute,
@@ -276,36 +404,14 @@ class CommunityWriteEntryView(RequesterOnlyView):
         )
 
         async def select_callback(interaction: discord.Interaction) -> None:
-            self.disable_all()
-            self.stop()
-            if self.capability_id == "event_create":
-                await interaction.response.edit_message(
-                    content="Discord公式イベントの開催形式を選んでな。",
-                    view=EventTypeChoiceView(requester_id=self.requester_id),
-                )
-                return
-
-            await interaction.message.edit(
-                content=(
-                    f"選択: **{self.capability_name}**\n"
-                    "入力内容を確認したあと、最終確認するで。"
-                ),
-                view=self,
-            )
-            if self.capability_id == "poll_create":
-                await interaction.response.send_modal(PollCreateModal(requester_id=self.requester_id))
-                return
-            await interaction.response.send_message(
-                "この機能はまだ確認フロー対象外やで。",
-                ephemeral=True,
-            )
+            await self.begin(interaction)
 
         async def cancel_callback(interaction: discord.Interaction) -> None:
             self.cancelled = True
             self.disable_all()
             self.stop()
             await interaction.response.edit_message(
-                content="キャンセル済みやで。作成はしてへんで。",
+                content="👌 キャンセルしたで。作成はしてへんで。",
                 view=self,
             )
 
@@ -313,3 +419,31 @@ class CommunityWriteEntryView(RequesterOnlyView):
         cancel.callback = cancel_callback
         self.add_item(select)
         self.add_item(cancel)
+
+    async def begin(self, interaction: discord.Interaction) -> None:
+        self.disable_all()
+        self.stop()
+        if self.capability_id == "event_create":
+            await interaction.response.edit_message(
+                content=(
+                    "📅 イベントを作るんやな！開催形式を選んでな👇\n"
+                    "一番よく使う **ボイス** を先頭にしてあるで。"
+                ),
+                view=EventTypeChoiceView(requester_id=self.requester_id),
+            )
+            return
+
+        await interaction.message.edit(
+            content=(
+                f"✨ **{self.capability_name}** の操作を始めるで。\n"
+                "内容を入力したあと、最後にちゃんと確認するから安心してな👌"
+            ),
+            view=None,
+        )
+        if self.capability_id == "poll_create":
+            await interaction.response.send_modal(PollCreateModal(requester_id=self.requester_id))
+            return
+        await interaction.response.send_message(
+            "この機能はまだ確認フロー対象外やで。",
+            ephemeral=True,
+        )
