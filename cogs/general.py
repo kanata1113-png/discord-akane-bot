@@ -1,4 +1,4 @@
-from cogs.general_commands import GeneralCog
+from cogs.general_v4 import GeneralCog
 
 
 async def setup(bot):
