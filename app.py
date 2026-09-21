@@ -14,7 +14,7 @@ from repositories import RepositoryRegistry
 from runtime_preflight import validate_runtime_environment
 from services import ServiceRegistry
 from views.event_view import EventView
-from views.ticket_view import TicketCloseView, TicketView
+from views.ticket_view import TicketCloseView, TicketClosedView, TicketView
 
 
 logger = logging.getLogger("AkaneBot")
@@ -127,6 +127,7 @@ class AkaneBot(commands.Bot):
             self.add_view(EventView())
             self.add_view(TicketView(self))
             self.add_view(TicketCloseView(self))
+            self.add_view(TicketClosedView(self))
             logger.info("Persistent views loaded.")
         except Exception as error:
             logger.exception(f"Persistent views failed: {error}")

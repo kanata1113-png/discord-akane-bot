@@ -74,7 +74,7 @@ async def test_full_db_stack_survives_init_migration_and_facade_roundtrip(tmp_pa
     await legacy.init()
 
     applied = await run_migrations(db_path)
-    assert [migration.version for migration in applied] == [LATEST_SCHEMA_VERSION]
+    assert [migration.version for migration in applied] == [1, LATEST_SCHEMA_VERSION]
     assert await get_schema_version(db_path) == LATEST_SCHEMA_VERSION
 
     repositories = RepositoryRegistry(db_path)

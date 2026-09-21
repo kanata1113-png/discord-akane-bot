@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from views.event_view import EventView
-from views.ticket_view import TicketCloseView, TicketView, safe_channel_name
+from views.ticket_view import TicketCloseView, TicketClosedView, TicketView, safe_channel_name
 
 
 def custom_ids(view):
@@ -26,7 +26,23 @@ def test_ticket_close_view_is_persistent_with_stable_custom_id():
     view = TicketCloseView(SimpleNamespace())
 
     assert view.timeout is None
-    assert custom_ids(view) == {"ticket_close_button"}
+    assert custom_ids(view) == {
+        "ticket_close_button",
+        "ticket_claim_button",
+        "ticket_rename_button",
+        "ticket_add_member_button",
+        "ticket_remove_member_button",
+    }
+
+
+def test_ticket_closed_view_is_persistent_with_reopen_and_delete():
+    view = TicketClosedView(SimpleNamespace())
+
+    assert view.timeout is None
+    assert custom_ids(view) == {
+        "ticket_reopen_button",
+        "ticket_delete_button",
+    }
 
 
 def test_safe_channel_name_current_behavior():

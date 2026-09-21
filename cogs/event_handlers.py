@@ -14,7 +14,9 @@ from services.message_capability_discovery import discover_message_capabilities
 from views.capability_candidate_view import (
     CapabilityCandidateView,
     candidate_panel_text,
+    single_candidate_handoff,
 )
+from views.ticket_view import TicketView
 
 
 logger = logging.getLogger(
@@ -478,6 +480,19 @@ class EventsCog(commands.Cog):
 
                 if clean_text:
 
+                    ticket_intent = bool(re.search(
+                        r"(管理人|管理者|運営).{0,8}(問い合わせ|相談|連絡)|"
+                        r"(問い合わせ|相談).{0,8}(チケット|作成|したい)",
+                        clean_text,
+                    ))
+                    if ticket_intent:
+                        await message.reply(
+                            "🎫 問い合わせやな！茜が受付するで。\n"
+                            "下のメニューから種類を選んでな👇",
+                            view=TicketView(self.bot),
+                        )
+                        return
+
                     discovery = await discover_message_capabilities(
                         clean_text,
                         reranker=self._discovery_reranker,
@@ -490,6 +505,15 @@ class EventsCog(commands.Cog):
                             f"source={discovery.source} | "
                             f"candidates={len(discovery.candidates)}"
                         )
+                        if len(discovery.candidates) == 1:
+                            handoff = single_candidate_handoff(
+                                discovery.candidates[0],
+                                requester_id=message.author.id,
+                            )
+                            if handoff is not None:
+                                content, view = handoff
+                                await message.reply(content, view=view)
+                                return
                         await message.reply(
                             candidate_panel_text(discovery.candidates),
                             view=CapabilityCandidateView(

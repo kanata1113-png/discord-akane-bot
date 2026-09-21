@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import Literal, Optional, Union
 
@@ -192,9 +193,39 @@ class GeneralCog(ReleaseDGeneralCog):
         if not found:
             await interaction.followup.send("見つからへんかったで。", ephemeral=True)
             return
-        if len(found) > 20:
-            text = "\n".join(f"[{message.created_at}] {message.author}: {message.content}" for message in found)
-            await interaction.followup.send(f"{len(found)}件", file=discord.File(io.BytesIO(text.encode("utf-8")), filename="result.txt"), ephemeral=True)
-            return
-        description = "\n".join(f"• [{message.content[:30]}]({message.jump_url})" for message in found)
-        await interaction.followup.send(embed=discord.Embed(title=f"検索: {keyword}", description=description), ephemeral=True)
+        def search_snippet(content: str, query: str, limit: int = 48) -> str:
+            clean = re.sub(r"[*_~`>#|]+", " ", content or "")
+            clean = re.sub(r"\\s+", " ", clean).strip()
+            if not clean:
+                return "（本文なし）"
+            pos = clean.casefold().find(query.casefold())
+            if pos < 0:
+                pos = 0
+            start = max(0, pos - 12)
+            snippet = clean[start:start + limit].strip()
+            if start > 0:
+                snippet = "…" + snippet
+            if start + limit < len(clean):
+                snippet += "…"
+            return snippet
+
+        visible = found[:10]
+        blocks = []
+        for message in visible:
+            created = message.created_at.astimezone(JST).strftime("%m/%d %H:%M")
+            author = getattr(message.author, "display_name", str(message.author))
+            snippet = search_snippet(message.content, keyword)
+            blocks.append(
+                f"👤 **{author}**\n"
+                f"📝 [{snippet}]({message.jump_url})\n"
+                f"🕐 {created}"
+            )
+        description = "\n\n".join(blocks)
+        footer = f"{len(found)}件中 {len(visible)}件を表示" if len(found) > len(visible) else f"{len(found)}件"
+        embed = discord.Embed(
+            title=f"🔎 「{keyword}」の検索結果",
+            description=description,
+            color=discord.Color.blue(),
+        )
+        embed.set_footer(text=footer)
+        await interaction.followup.send(embed=embed, ephemeral=True)

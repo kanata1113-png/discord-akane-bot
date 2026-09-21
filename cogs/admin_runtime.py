@@ -203,6 +203,16 @@ class AdminCommands(LegacyAdminCommands):
             )
             value = {"rule_ch_id": rule_ch_id, "target_ch_id": target_ch_id}
         elif capability_id == SETUP_TICKET_SPEC.capability_id:
+            staff_role_id = arguments.get("staff_role_id")
+            if staff_role_id is not None:
+                role = guild.get_role(int(staff_role_id))
+                if role is None:
+                    raise ValueError("role_missing")
+                await self.bot.db.set_config(
+                    guild.id,
+                    "ticket_staff_role_id",
+                    role.id,
+                )
             embed = discord.Embed(
                 title="📩 サポート・問い合わせ",
                 description="問い合わせがある人は、下のメニューから種類を選んでな。\n\n専用の非公開チャンネルを作るで！",
@@ -214,7 +224,10 @@ class AdminCommands(LegacyAdminCommands):
             embed.add_field(name="📦 その他", value="それ以外の問い合わせ", inline=False)
             embed.set_footer(text="1人につき同時に1つのTicketまで")
             await interaction.channel.send(embed=embed, view=TicketView(self.bot))
-            value = {"channel_id": interaction.channel.id}
+            value = {
+                "channel_id": interaction.channel.id,
+                "staff_role_id": staff_role_id,
+            }
         elif capability_id == ROLEPANEL_SPEC.capability_id:
             message = await interaction.channel.fetch_message(int(arguments["message_id"]))
             role = guild.get_role(int(arguments["role_id"]))
@@ -334,14 +347,31 @@ class AdminCommands(LegacyAdminCommands):
         )
 
     @app_commands.command(name="setup_ticket", description="Ticketパネル設置")
-    async def setup_ticket(self, interaction: discord.Interaction):
+    @app_commands.describe(staff_role="Ticketを担当できる運営ロール（任意）")
+    async def setup_ticket(
+        self,
+        interaction: discord.Interaction,
+        staff_role: discord.Role | None = None,
+    ):
+        role_line = (
+            f"\n担当ロール: {staff_role.mention}"
+            if staff_role is not None
+            else "\n担当ロール: 現在設定を維持（管理者は常に操作可能）"
+        )
         await self._prompt_admin_action(
             interaction,
             capability_id=SETUP_TICKET_SPEC.capability_id,
-            arguments={},
-            review_text=f"📩 {interaction.channel.mention} にTicketパネルを設置する？",
+            arguments={
+                "staff_role_id": staff_role.id if staff_role else None,
+            },
+            review_text=(
+                f"📩 {interaction.channel.mention} にTicketパネルを設置する？"
+                + role_line
+            ),
             confirm_label="Ticket設置を確定",
-            success_text=lambda value: f"✅ <#{value['channel_id']}> にTicketパネルを設置したで。",
+            success_text=lambda value: (
+                f"✅ <#{value['channel_id']}> にTicketパネルを設置したで。"
+            ),
         )
 
     @app_commands.command(name="rolepanel", description="ロールパネル作成")
