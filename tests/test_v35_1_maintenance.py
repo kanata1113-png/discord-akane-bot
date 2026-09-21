@@ -21,7 +21,7 @@ def test_chat_output_limits_are_route_specific():
 
 
 @pytest.mark.asyncio
-async def test_chat_passes_reasoning_limit_to_responses_call():
+async def test_chat_passes_cost_budgeted_reasoning_limit_to_responses_call():
     manager = AiManager.__new__(AiManager)
     captured = {}
 
@@ -40,7 +40,7 @@ async def test_chat_passes_reasoning_limit_to_responses_call():
     assert reply == "ok"
     assert model == Config.CHAT_MODEL
     assert route == "regulation"
-    assert captured["max_tokens"] == 2000
+    assert captured["max_tokens"] == 1200
 
 
 @pytest.mark.asyncio
