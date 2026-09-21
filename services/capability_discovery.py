@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from services.capability_core import CapabilitySpec
+from services.write_intent_discovery import discover_write_intent
 
 
 ACTION_VERBS = (
@@ -17,6 +18,15 @@ ACTION_VERBS = (
     "してほしい",
     "使いたい",
     "調べたい",
+    "変更",
+    "変えて",
+    "設定",
+    "削除",
+    "消して",
+    "忘れて",
+    "登録",
+    "作って",
+    "追加",
 )
 
 CAPABILITY_MARKERS = (
@@ -31,6 +41,8 @@ CAPABILITY_MARKERS = (
     "称号",
     "メモリー",
     "記憶",
+    "履歴",
+    "リマインダー",
     "翻訳",
     "要約",
     "辞書",
@@ -41,6 +53,8 @@ CAPABILITY_MARKERS = (
     "fortune",
     "title",
     "memory",
+    "remind",
+    "reminder",
     "translate",
     "summary",
     "define",
@@ -57,24 +71,6 @@ CHAT_INTENT_MARKERS = (
     "とは",
     "について",
     "教えて",
-)
-
-TITLE_WRITE_MARKERS = (
-    "変更",
-    "変えて",
-    "設定",
-    "装備",
-    "つけて",
-)
-
-MEMORY_DELETE_MARKERS = (
-    "消して",
-    "削除",
-    "忘れて",
-    "忘れ",
-    "clear",
-    "delete",
-    "forget",
 )
 
 
@@ -95,31 +91,6 @@ class DiscoveryDecision:
     reason: str
 
 
-def _has_unsupported_write_intent(text: str) -> bool:
-    """Reject write-shaped intents not yet approved for discovery.
-
-    Release C intentionally exposes read/AI candidates before WRITE_CONFIRM
-    capabilities. Without this local guard, phrases such as "称号を変更して"
-    could incorrectly surface the read-only titles candidate, or "記憶を消して"
-    could surface memory status. Those requests must stay outside discovery until
-    a dedicated confirmation UX is implemented.
-    """
-
-    has_title_subject = any(
-        marker in text for marker in ("称号", "title")
-    )
-    if has_title_subject and any(marker in text for marker in TITLE_WRITE_MARKERS):
-        return True
-
-    has_memory_subject = any(
-        marker in text for marker in ("メモリー", "記憶", "memory")
-    )
-    if has_memory_subject and any(marker in text for marker in MEMORY_DELETE_MARKERS):
-        return True
-
-    return False
-
-
 def should_attempt_discovery(content: str) -> bool:
     """Cheap local gate. False means ordinary chat continues unchanged."""
 
@@ -128,15 +99,9 @@ def should_attempt_discovery(content: str) -> bool:
         return False
     if any(marker in text for marker in CHAT_INTENT_MARKERS):
         return False
-    if _has_unsupported_write_intent(text):
-        return False
 
-    has_capability = any(
-        marker in text for marker in CAPABILITY_MARKERS
-    )
-    has_action = any(
-        marker in text for marker in ACTION_VERBS
-    )
+    has_capability = any(marker in text for marker in CAPABILITY_MARKERS)
+    has_action = any(marker in text for marker in ACTION_VERBS)
     return has_capability and has_action
 
 
@@ -150,6 +115,7 @@ def shortlist_capabilities(
 
     text = (content or "").strip().lower()
     ranked: list[DiscoveryCandidate] = []
+    write_intent = discover_write_intent(text)
 
     aliases = {
         "level": ("レベル",),
@@ -158,7 +124,10 @@ def shortlist_capabilities(
         "fortune": ("運勢", "占い"),
         "profile": ("プロフィール",),
         "titles": ("称号",),
-        "memory_status": ("メモリー", "記憶"),
+        "title_set": ("称号", "称号変更"),
+        "memory_status": ("メモリー", "記憶", "履歴"),
+        "memory_forget": ("メモリー", "記憶", "履歴", "履歴削除"),
+        "remind": ("リマインダー", "reminder", "remind"),
         "translate": ("翻訳",),
         "summary": ("要約",),
         "define": ("辞書",),
@@ -185,9 +154,8 @@ def shortlist_capabilities(
             for alias in aliases.get(spec.capability_id, ())
             if alias in text
         ]
-        if (
-            spec.capability_id == "rankings"
-            and ("ランキング" in text or "順位" in text)
+        if spec.capability_id == "rankings" and (
+            "ランキング" in text or "順位" in text
         ):
             semantic_matches.append("ランキング")
         matched = tuple(dict.fromkeys((*matched, *semantic_matches)))
@@ -206,6 +174,11 @@ def shortlist_capabilities(
             score += 3.0
         if spec.capability_id == "leaderboard" and "レベル" in text:
             score += 2.0
+        if (
+            write_intent.should_route
+            and write_intent.capability_id == spec.capability_id
+        ):
+            score += 8.0
 
         ranked.append(
             DiscoveryCandidate(
