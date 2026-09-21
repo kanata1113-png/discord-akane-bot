@@ -4,6 +4,7 @@ from openai import AsyncOpenAI
 
 from config import Config
 from services.ai_executor import AIExecutor
+from services.ai_orchestrator import AIOrchestrator
 from services.jev_model_router import JevModelRouter
 from services.prompt_builder import PromptBuilder
 from services.routing_metrics import RoutingTelemetry
@@ -25,9 +26,13 @@ class AiManager:
             self.jev_router,
             telemetry=self.routing_telemetry,
         )
+        self.orchestrator = AIOrchestrator(
+            self.routing_policy,
+            self.call_gpt,
+        )
 
         logger.info(
-            "AI platform initialized | version=1.8-dev | "
+            "AI platform initialized | version=2.0-dev | "
             "jev_mode=%s | jev_configured=%s | "
             "confidence_threshold=%.2f | timeout_seconds=%.2f | "
             "context_hints=%s | adaptive_budget=%s",
@@ -50,6 +55,18 @@ class AiManager:
             policy = RoutingPolicy(router, telemetry=telemetry)
             self.routing_policy = policy
         return policy
+
+    def _orchestrator(self) -> AIOrchestrator:
+        policy = self._policy()
+        orchestrator = getattr(self, "orchestrator", None)
+        if (
+            orchestrator is None
+            or orchestrator.routing_policy is not policy
+            or orchestrator.generate != self.call_gpt
+        ):
+            orchestrator = AIOrchestrator(policy, self.call_gpt)
+            self.orchestrator = orchestrator
+        return orchestrator
 
     @staticmethod
     def get_system_prompt(regulation_mode: bool = False) -> str:
@@ -144,37 +161,11 @@ class AiManager:
         )
 
     async def chat(self, user_name: str, content: str, history=None):
-        selection = await self._policy().select(content, history=history)
-
-        regulation_mode = any(
-            keyword in content for keyword in Config.REGULATION_KEYWORDS
-        )
-        system_prompt = PromptBuilder.chat_system_prompt(
-            regulation_mode=regulation_mode
-        )
-        user_prompt = PromptBuilder.chat_user_prompt(user_name, content)
-
-        logger.info(
-            "AI route selected | route=%s | source=%s | model=%s | "
-            "effort=%s | max_output_tokens=%s | history=%s | event_id=%s",
-            selection.route,
-            selection.source,
-            selection.model,
-            selection.reasoning_effort,
-            selection.max_output_tokens,
-            len(history) if history else 0,
-            selection.event_id,
-        )
-
-        reply = await self.call_gpt(
-            system=system_prompt,
-            user=user_prompt,
-            model=selection.model,
-            max_tokens=selection.max_output_tokens,
+        return await self._orchestrator().chat(
+            user_name=user_name,
+            content=content,
             history=history,
-            reasoning_effort=selection.reasoning_effort,
         )
-        return reply, selection.model, selection.route
 
     async def translate(self, text: str, target_language: str) -> str:
         system, user = PromptBuilder.translation_prompt(text, target_language)
