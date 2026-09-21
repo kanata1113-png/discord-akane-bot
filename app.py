@@ -53,29 +53,27 @@ class AkaneBot(commands.Bot):
 
     async def setup_hook(self):
         logger.info("==============================================")
-        logger.info("Akane Bot AI Platform v1.0 candidate starting...")
+        logger.info("Akane Bot AI Platform v3.1 starting...")
         logger.info(f"Database path: {Config.DB_NAME}")
-        logger.info("GPT-5.6 model tiers:")
+        logger.info("GPT-5.6 routing tiers:")
         logger.info(
-            f"  Normal chat: {Config.CHAT_MODEL} "
-            f"[{Config.CHAT_REASONING_EFFORT}]"
+            f"  Normal chat: {Config.FAST_MODEL} "
+            f"[{Config.FAST_REASONING_EFFORT}]"
         )
         logger.info(
-            f"  Reasoning: {Config.REASONING_MODEL} "
-            f"[{Config.REASONING_EFFORT}]"
+            f"  Standard reasoning/regulation: {Config.CHAT_MODEL} "
+            f"[{Config.CHAT_REASONING_EFFORT}]"
         )
         logger.info(
             f"  Deep reasoning: {Config.REASONING_MODEL} "
             f"[{Config.DEEP_REASONING_EFFORT}]"
         )
         logger.info(
-            f"  Fast tasks: {Config.FAST_MODEL} "
-            f"[{Config.FAST_REASONING_EFFORT}]"
-        )
-        logger.info(
             "  Jev routing mode: %s",
             self.ai.jev_router.mode,
         )
+        logger.info("  Context optimization: local conservative compression")
+        logger.info("  Cost telemetry: metadata-only")
         logger.info(f"Memory limit: {Config.MEMORY_MESSAGE_LIMIT}")
         logger.info(
             f"Memory retention: {Config.MEMORY_RETENTION_DAYS} days"
@@ -164,14 +162,15 @@ class AkaneBot(commands.Bot):
         logger.info(f"OpenAI SDK version: {openai.__version__}")
         logger.info(f"Database: {Config.DB_NAME}")
         logger.info(f"Guild count: {len(self.guilds)}")
-        logger.info("AI platform v1.0 candidate:")
-        logger.info(f"Normal = {Config.CHAT_MODEL}")
-        logger.info(f"Reasoning = {Config.REASONING_MODEL}")
-        logger.info(f"Fast = {Config.FAST_MODEL}")
+        logger.info("AI platform v3.1:")
+        logger.info(f"Normal = {Config.FAST_MODEL}")
+        logger.info(f"Standard reasoning = {Config.CHAT_MODEL}")
+        logger.info(f"Deep = {Config.REASONING_MODEL}")
         logger.info(f"Jev mode = {self.ai.jev_router.mode}")
         logger.info("Responses API: READY")
         logger.info("Routing policy: READY")
-        logger.info("Routing telemetry: READY")
+        logger.info("Context optimization: READY")
+        logger.info("Cost telemetry: READY")
         logger.info("AI memory: READY")
         logger.info("XP system: READY")
         logger.info("Spam protection: READY")
@@ -181,7 +180,7 @@ class AkaneBot(commands.Bot):
         logger.info("Fortune: READY")
         logger.info("Weekly XP ranking: READY")
         logger.info("Community rankings: READY")
-        logger.info("Akane Bot AI Platform v1.0 candidate READY")
+        logger.info("Akane Bot AI Platform v3.1 READY")
         logger.info("==============================================")
 
     async def on_app_command_error(
