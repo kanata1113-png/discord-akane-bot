@@ -1237,17 +1237,27 @@ class TicketCloseConfirmView(
             # Final Message
             # ==================================================================
 
-            try:
-
-                await channel.send(
-                    "🔒 Ticketを閉じるで。\n"
-                    "3秒後にこのチャンネルを"
-                    "削除するな。"
+            owner = guild.get_member(ticket_user_id)
+            if owner is not None:
+                await channel.set_permissions(
+                    owner,
+                    view_channel=True,
+                    send_messages=False,
+                    read_message_history=True,
+                    attach_files=False,
+                    reason=f"Ticket closed by {interaction.user}",
                 )
 
-            except Exception:
+            await channel.edit(
+                name=f"closed-ticket-{int(ticket_id):04d}",
+                reason=f"Akane Native Ticket closed by {interaction.user}",
+            )
 
-                pass
+            await channel.send(
+                "🔒 Ticketを閉じたで。履歴は残してあるから、"
+                "担当者は必要なら再開できるで。",
+                view=TicketClosedView(self.bot),
+            )
 
             logger.info(
                 "Ticket closed | "
@@ -1256,16 +1266,6 @@ class TicketCloseConfirmView(
                 f"user={ticket_user_id} | "
                 f"closed_by="
                 f"{interaction.user.id}"
-            )
-
-            await asyncio.sleep(
-                3
-            )
-
-            await channel.delete(
-                reason=(
-                    "Akane Bot Ticket Closed"
-                )
             )
 
         except discord.Forbidden:
