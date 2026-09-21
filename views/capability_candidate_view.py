@@ -7,6 +7,15 @@ import discord
 
 from services.capability_discovery import DiscoveryCandidate
 from services.discovery_selection_executor import execute_discovery_selection
+from views.write_capability_view import (
+    WriteCapabilityEntryView,
+    write_capability_panel_text,
+)
+
+
+WRITE_CONFIRM_DISCOVERY_IDS = frozenset(
+    {"title_set", "memory_forget", "remind"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,10 +33,9 @@ SelectionCallback = Callable[
 class CapabilityCandidateView(discord.ui.View):
     """Discovery panel gated by an explicit requester selection.
 
-    Production discovery uses the approved direct-execution adapter by default.
-    Callers may explicitly pass ``on_select=None`` to retain the earlier
-    selection-only behavior. The view itself owns no dispatcher, handler
-    registry, or database reference.
+    Read-only direct execution stays governed by the existing executor.
+    Release D WRITE_CONFIRM candidates are routed into a separate requester-only
+    argument/confirmation flow and are never sent to direct execution.
     """
 
     def __init__(
@@ -100,8 +108,18 @@ class CapabilityCandidateView(discord.ui.View):
 
         for item in self.children:
             item.disabled = True
-
         self.stop()
+
+        if candidate.capability_id in WRITE_CONFIRM_DISCOVERY_IDS:
+            await interaction.response.edit_message(
+                content=write_capability_panel_text(candidate.name),
+                view=WriteCapabilityEntryView(
+                    requester_id=self.requester_id,
+                    capability_id=candidate.capability_id,
+                    capability_name=candidate.name,
+                ),
+            )
+            return
 
         if self._on_select is None:
             command = candidate.slash_command or candidate.name
@@ -158,5 +176,6 @@ def candidate_panel_text(
     return (
         "もしかして、次の機能を探してる？\n"
         f"候補は{count}件や。使いたいものを選んでな。"
-        "\n※ 対応済みの読み取り機能は、選択後にそのまま実行されるで。"
+        "\n※ 対応済みの読み取り機能は選択後にそのまま実行、"
+        "書き込みは必ず確認を挟むで。"
     )

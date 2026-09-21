@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from services.capability_catalog import DISCOVERY_RELEASE_C_SPECS
+from services.capability_catalog import DISCOVERY_RELEASE_D_SPECS
 from services.capability_core import CapabilityRisk, CapabilitySpec
 from services.discovery_execution_policy import DIRECT_EXECUTION_CAPABILITY_IDS
 
@@ -24,16 +24,16 @@ SELECTION_ONLY_REASONS = {
     "translate": "required_arguments_and_external_cost",
     "define": "required_arguments_and_external_cost",
     "summary": "required_arguments_and_external_cost",
+    "title_set": "write_confirm_flow",
+    "memory_forget": "write_confirm_flow",
+    "remind": "write_confirm_flow",
 }
 
-# B2 already approved profile/achievements for explicit-selection execution even
-# though their legacy read path may persist unlock bookkeeping. Keep those
-# grandfathered semantics explicit rather than pretending they are pure reads.
 LEGACY_BOOKKEEPING_DIRECT_EXECUTION = frozenset({"profile", "achievements"})
 
 
 def audit_discovery_policy(
-    specs: tuple[CapabilitySpec, ...] = DISCOVERY_RELEASE_C_SPECS,
+    specs: tuple[CapabilitySpec, ...] = DISCOVERY_RELEASE_D_SPECS,
 ) -> tuple[DiscoveryPolicyRecord, ...]:
     records = []
     for spec in specs:
@@ -99,3 +99,14 @@ def validate_discovery_policy() -> None:
             f"expected={sorted(expected_selection_only)} "
             f"actual={sorted(actual_selection_only)}"
         )
+
+    for record in records:
+        if record.risk is CapabilityRisk.WRITE_CONFIRM:
+            if record.direct_executable:
+                raise ValueError(
+                    f"WRITE_CONFIRM bypassed confirmation flow: {record.capability_id}"
+                )
+            if record.reason != "write_confirm_flow":
+                raise ValueError(
+                    f"WRITE_CONFIRM missing explicit flow policy: {record.capability_id}"
+                )

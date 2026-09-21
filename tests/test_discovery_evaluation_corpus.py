@@ -29,6 +29,14 @@ POSITIVE_CASES = (
     ("これを翻訳してほしい", "translate"),
     ("発言を要約してほしい", "summary"),
     ("辞書を使いたい", "define"),
+    # Release D WRITE_CONFIRM discovery. These only enter a confirmation flow;
+    # they are intentionally not direct-execution capabilities.
+    ("称号を変更して", "title_set"),
+    ("称号を装備して", "title_set"),
+    ("記憶を消して", "memory_forget"),
+    ("メモリーを削除して", "memory_forget"),
+    ("memoryをforgetして", "memory_forget"),
+    ("リマインダーを登録して", "remind"),
 )
 
 NEGATIVE_CASES = (
@@ -45,12 +53,7 @@ NEGATIVE_CASES = (
     "翻訳について教えて",
     "記憶とは何か教えて",
     "辞書の歴史について教えて",
-    "称号を変更して",
-    "称号を装備して",
-    "記憶を消して",
-    "メモリーを削除して",
-    "memoryをforgetして",
-    "リマインダーを登録して",
+    "リマインダーについて教えて",
 )
 
 

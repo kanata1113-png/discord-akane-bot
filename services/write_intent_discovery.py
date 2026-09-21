@@ -1,0 +1,59 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class WriteIntentDecision:
+    should_route: bool
+    capability_id: str | None = None
+    name: str | None = None
+    reason: str = "no_write_intent"
+
+
+_TITLE_SUBJECTS = ("称号", "title")
+_TITLE_WRITES = ("変更", "変えて", "設定", "装備", "つけて")
+_MEMORY_SUBJECTS = ("メモリー", "記憶", "履歴", "memory")
+_MEMORY_DELETES = ("消して", "削除", "忘れて", "忘れ", "clear", "delete", "forget")
+_REMINDER_SUBJECTS = ("リマインダー", "reminder", "remind")
+_REMINDER_ACTIONS = ("登録", "設定", "作って", "追加", "お願い", "して", "したい")
+
+
+def discover_write_intent(content: str) -> WriteIntentDecision:
+    """Detect the small Release D WRITE_CONFIRM pilot locally.
+
+    This gate never executes anything. It only decides whether the message should
+    enter the dedicated confirmation UI rather than read-only discovery or AI
+    chat. Ambiguous or unsupported write-like text fails closed.
+    """
+
+    text = (content or "").strip().lower()
+    if not text or len(text) > 180:
+        return WriteIntentDecision(False, reason="gate_rejected")
+
+    if any(subject in text for subject in _TITLE_SUBJECTS) and any(
+        verb in text for verb in _TITLE_WRITES
+    ):
+        return WriteIntentDecision(True, "title_set", "称号変更", "title_write")
+
+    if any(subject in text for subject in _MEMORY_SUBJECTS) and any(
+        verb in text for verb in _MEMORY_DELETES
+    ):
+        return WriteIntentDecision(
+            True,
+            "memory_forget",
+            "会話履歴削除",
+            "memory_delete",
+        )
+
+    if any(subject in text for subject in _REMINDER_SUBJECTS) and any(
+        verb in text for verb in _REMINDER_ACTIONS
+    ):
+        return WriteIntentDecision(
+            True,
+            "remind",
+            "リマインダー登録",
+            "reminder_write",
+        )
+
+    return WriteIntentDecision(False)
