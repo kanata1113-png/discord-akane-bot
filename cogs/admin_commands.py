@@ -358,6 +358,27 @@ class AdminCommands(app_commands.Group):
                     ephemeral=True
                 )
 
+    @app_commands.command(
+        name="ai_cost",
+        description="直近のAI利用コスト・モデル比率を確認"
+    )
+    async def ai_cost(self, interaction: discord.Interaction):
+        telemetry = getattr(getattr(self.bot.ai, "executor", None), "cost_telemetry", None)
+        summary = telemetry.summary() if telemetry else {
+            "requests": 0, "luna": 0, "terra": 0, "sol": 0, "sol_rate": 0.0,
+            "input_tokens": 0, "output_tokens": 0, "estimated_cost_units": 0.0,
+        }
+        await interaction.response.send_message(
+            "📊 **AI Cost Dashboard**\n"
+            f"- Requests: **{summary['requests']}**\n"
+            f"- Luna / Terra / Sol: **{summary['luna']} / {summary['terra']} / {summary['sol']}**\n"
+            f"- Sol率: **{summary['sol_rate']}%**（目標 10〜20%）\n"
+            f"- Input / Output tokens: **{summary['input_tokens']} / {summary['output_tokens']}**\n"
+            f"- Relative cost units: **{summary['estimated_cost_units']}**\n"
+            "※ 起動後の直近最大1000件。金額ではなく相対コスト指標やで。",
+            ephemeral=True,
+        )
+
     # ==========================================================================
     # Config Log
     # ==========================================================================
