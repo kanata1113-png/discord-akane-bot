@@ -10,10 +10,10 @@ FOLLOWUP_MARKERS = (
     "さっき",
     "前の",
     "もう少し",
-    "詳しく",
-    "比較して",
     "続けて",
     "その点",
+    "その話",
+    "その件",
     "that",
     "this",
     "previous",
@@ -26,23 +26,30 @@ FOLLOWUP_MARKERS = (
 class RoutingContext:
     """Privacy-minimal conversation metadata for model routing.
 
-    No prior message body is returned. The context only describes whether the
-    current message looks like a follow-up and how much usable history exists.
+    Prior message bodies are never included in the hint. When the current
+    message looks like a true follow-up, locally-derived metadata about the
+    previous user turn can be attached to preserve routing continuity.
     """
 
     history_messages: int
     prior_user_messages: int
     prior_assistant_messages: int
     followup_like: bool
+    previous_route: str | None = None
+    previous_intent: str | None = None
 
     def as_hint(self) -> str:
-        return (
-            "routing_context="
-            f"history:{self.history_messages},"
-            f"prior_user:{self.prior_user_messages},"
-            f"prior_assistant:{self.prior_assistant_messages},"
-            f"followup:{str(self.followup_like).lower()}"
-        )
+        parts = [
+            f"history:{self.history_messages}",
+            f"prior_user:{self.prior_user_messages}",
+            f"prior_assistant:{self.prior_assistant_messages}",
+            f"followup:{str(self.followup_like).lower()}",
+        ]
+        if self.followup_like and self.previous_route:
+            parts.append(f"previous_route:{self.previous_route}")
+        if self.followup_like and self.previous_intent:
+            parts.append(f"previous_intent:{self.previous_intent}")
+        return "routing_context=" + ",".join(parts)
 
 
 class ContextBuilder:
@@ -50,6 +57,9 @@ class ContextBuilder:
     def build(
         content: str,
         history: Iterable[Mapping[str, object]] | None,
+        *,
+        previous_route: str | None = None,
+        previous_intent: str | None = None,
     ) -> RoutingContext:
         usable = []
         for item in history or []:
@@ -68,4 +78,6 @@ class ContextBuilder:
             prior_user_messages=sum(role == "user" for role in usable),
             prior_assistant_messages=sum(role == "assistant" for role in usable),
             followup_like=followup_like,
+            previous_route=previous_route if followup_like else None,
+            previous_intent=previous_intent if followup_like else None,
         )
