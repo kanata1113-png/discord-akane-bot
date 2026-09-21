@@ -13,12 +13,20 @@ class CostPolicy:
     """
 
     @staticmethod
-    def model_weight(model: str) -> float:
+    def _weight(name: str, default: float) -> float:
+        try:
+            value = float(os.getenv(name, str(default)))
+        except ValueError:
+            return default
+        return value if value > 0 else default
+
+    @classmethod
+    def model_weight(cls, model: str) -> float:
         if model == Config.REASONING_MODEL:
-            return float(os.getenv("AI_COST_WEIGHT_REASONING", "3.0"))
+            return cls._weight("AI_COST_WEIGHT_REASONING", 3.0)
         if model == Config.FAST_MODEL:
-            return float(os.getenv("AI_COST_WEIGHT_FAST", "0.5"))
-        return float(os.getenv("AI_COST_WEIGHT_CHAT", "1.0"))
+            return cls._weight("AI_COST_WEIGHT_FAST", 0.5)
+        return cls._weight("AI_COST_WEIGHT_CHAT", 1.0)
 
     @classmethod
     def estimate_units(cls, model: str, max_output_tokens: int) -> float:
