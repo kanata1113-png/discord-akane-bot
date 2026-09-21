@@ -57,6 +57,26 @@ class TicketRepository(BaseRepository):
             (datetime.now(JST).isoformat(), channel_id),
         )
 
+    async def reopen(self, channel_id: int) -> None:
+        await self.store.execute(
+            """
+            UPDATE tickets
+            SET status='open', closed_at=NULL
+            WHERE channel_id=? AND status='closed'
+            """,
+            (channel_id,),
+        )
+
+    async def claim(self, channel_id: int, staff_user_id: int) -> None:
+        await self.store.execute(
+            """
+            UPDATE tickets
+            SET assigned_staff_id=?
+            WHERE channel_id=?
+            """,
+            (staff_user_id, channel_id),
+        )
+
     async def delete_by_channel(self, channel_id: int) -> None:
         await self.store.execute(
             "DELETE FROM tickets WHERE channel_id=?",
