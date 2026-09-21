@@ -8,6 +8,8 @@ from time import perf_counter
 from services.budget_controller import BudgetController, BudgetDecision
 from services.control_plane_metrics import ControlPlaneEvent, ControlPlaneTelemetry
 from services.detail_intent import DetailIntent
+from services.followup_downgrade import FollowupDowngradePolicy
+from services.history_optimizer import HistoryOptimizer
 from services.intent_controller import IntentController, IntentDecision
 from services.orchestration_context import OrchestrationContext, OrchestrationContextBuilder
 from services.output_budget import OutputBudgetPolicy
@@ -27,6 +29,10 @@ class OrchestrationPlan:
     budget: BudgetDecision
     system_prompt: str
     user_prompt: str
+    execution_history: list[dict[str, str]]
+    history_mode: str
+    history_original_characters: int
+    history_optimized_characters: int
 
 
 class AIOrchestrator:
@@ -67,16 +73,34 @@ class AIOrchestrator:
         context = self.prepare_context(content=content, history=history)
         intent = self.classify_intent(context)
         route = await self.select_route(content=content, history=history)
+        route, _followup = FollowupDowngradePolicy.apply(route, context)
         route, _promotion = SolPromotionGate.apply(route, content)
         route_budget = self.select_budget(route=route, context=context)
         detail = DetailIntent.classify(content)
-        output = OutputBudgetPolicy.for_request(route.model, detail.level, route_budget.max_output_tokens)
+        output = OutputBudgetPolicy.for_request(
+            route.model,
+            detail.level,
+            route_budget.max_output_tokens,
+            message_length=context.message_length,
+        )
         budget = BudgetDecision(route=route.route, max_output_tokens=output.max_output_tokens, hard_cap=route_budget.hard_cap, reason=output.reason, controller_enabled=True)
         system_prompt, user_prompt = self.build_prompts(
             user_name=user_name, content=content, context=context, route=route,
             detail_level=detail.level, target_characters=output.target_characters,
         )
-        plan = OrchestrationPlan(context=context, intent=intent, route=route, budget=budget, system_prompt=system_prompt, user_prompt=user_prompt)
+        optimized = HistoryOptimizer.optimize(history)
+        plan = OrchestrationPlan(
+            context=context,
+            intent=intent,
+            route=route,
+            budget=budget,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            execution_history=optimized.messages,
+            history_mode=optimized.mode,
+            history_original_characters=optimized.original_characters,
+            history_optimized_characters=optimized.optimized_characters,
+        )
         self.telemetry.emit(ControlPlaneEvent(
             event_id=route.event_id, phase="plan_built", route=route.route, source=route.source,
             intent=intent.intent, pipeline=intent.effective_pipeline, model=route.model,
@@ -86,9 +110,10 @@ class AIOrchestrator:
 
     async def execute(self, plan: OrchestrationPlan, *, history=None) -> str:
         started = perf_counter()
+        execution_history = plan.execution_history if plan.execution_history is not None else history
         reply = await self.generate(
             system=plan.system_prompt, user=plan.user_prompt, model=plan.route.model,
-            max_tokens=plan.budget.max_output_tokens, history=history,
+            max_tokens=plan.budget.max_output_tokens, history=execution_history,
             reasoning_effort=plan.route.reasoning_effort, route=plan.route.route,
         )
         self.telemetry.emit(ControlPlaneEvent(
@@ -102,10 +127,11 @@ class AIOrchestrator:
     async def chat(self, *, user_name: str, content: str, history=None) -> tuple[str, str, str]:
         plan = await self.build_plan(user_name=user_name, content=content, history=history)
         logger.info(
-            "AI orchestration | route=%s | source=%s | model=%s | effort=%s | max_output_tokens=%s | intent=%s | pipeline=%s | budget_reason=%s | history=%s | event_id=%s",
+            "AI orchestration | route=%s | source=%s | model=%s | effort=%s | max_output_tokens=%s | intent=%s | pipeline=%s | budget_reason=%s | history=%s | history_mode=%s | history_chars=%s->%s | event_id=%s",
             plan.route.route, plan.route.source, plan.route.model, plan.route.reasoning_effort,
             plan.budget.max_output_tokens, plan.intent.intent, plan.intent.effective_pipeline,
-            plan.budget.reason, len(history) if history else 0, plan.route.event_id,
+            plan.budget.reason, len(history) if history else 0, plan.history_mode,
+            plan.history_original_characters, plan.history_optimized_characters, plan.route.event_id,
         )
         reply = await self.execute(plan, history=history)
         return reply, plan.route.model, plan.route.route
