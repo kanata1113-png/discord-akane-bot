@@ -10,6 +10,7 @@ from services.jev_discovery_reranker import DiscoveryReranker
 from services.progression_capabilities import (
     ACHIEVEMENTS_SPEC,
     FORTUNE_SPEC,
+    LEADERBOARD_SPEC,
     LEVEL_SPEC,
     PROFILE_SPEC,
     RANKINGS_SPEC,
@@ -19,6 +20,7 @@ from services.progression_capabilities import (
 
 DISCOVERY_SPECS = (
     LEVEL_SPEC,
+    LEADERBOARD_SPEC,
     WEEKLY_SPEC,
     RANKINGS_SPEC,
     PROFILE_SPEC,
