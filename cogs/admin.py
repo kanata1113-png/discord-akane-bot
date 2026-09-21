@@ -1,4 +1,4 @@
-from cogs.admin_commands import AdminCommands
+from cogs.admin_runtime import AdminCommands
 
 
 async def setup(bot):
