@@ -127,6 +127,18 @@ class Config:
     TICKET_CLOSE_CONFIRM_TIMEOUT = 60
 
     # ==========================================================================
+    # Reaction Translation
+    # ==========================================================================
+
+    REACTION_TRANSLATION_PREVIEW_CHARS = 140
+
+    REACTION_TRANSLATION_CACHE_SIZE = 256
+
+    REACTION_TRANSLATION_RATE_LIMIT = 5
+
+    REACTION_TRANSLATION_RATE_WINDOW_SECONDS = 60
+
+    # ==========================================================================
     # Profile / Achievement
     # ==========================================================================
 
@@ -172,12 +184,12 @@ class Config:
 
         "ai_friend": {
             "name": "🤖 茜の話し相手",
-            "description": "AI会話10回達成",
+            "description": "茜とAI会話10回達成",
         },
 
         "ai_partner": {
             "name": "🧠 茜の相棒",
-            "description": "AI会話100回達成",
+            "description": "茜とAI会話100回達成",
         },
 
         "supporter": {
@@ -243,7 +255,7 @@ class Config:
         "ai_100": {
             "name": "茜の相棒",
             "emoji": "🧠",
-            "description": "茜とAI会話を100回",
+            "description": "茜とAI会話100回",
         },
 
         "fortune_1": {
@@ -395,3 +407,7 @@ class Config:
         "🇹🇭": "Thai",
         "🇮🇩": "Indonesian",
     }
+
+    # ==========================================================================
+    # End
+    # ============================================================================
