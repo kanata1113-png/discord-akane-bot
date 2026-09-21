@@ -49,7 +49,7 @@ async def test_migrations_are_idempotent(tmp_path):
     first = await run_migrations(str(db_path))
     second = await run_migrations(str(db_path))
 
-    assert [migration.version for migration in first] == [1]
+    assert [migration.version for migration in first] == [1, 2]
     assert second == []
     assert await get_schema_version(str(db_path)) == LATEST_SCHEMA_VERSION
 
