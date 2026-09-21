@@ -30,12 +30,12 @@ MESSAGE_SEARCH_SPEC = CapabilitySpec(
 EVENT_CREATE_SPEC = CapabilitySpec(
     capability_id=EVENT_CREATE_CAPABILITY_ID,
     name="イベント作成",
-    description="日時を指定してDiscordイベントを作成する",
+    description="Discord公式スケジュールイベントを作成する",
     risk=CapabilityRisk.WRITE_CONFIRM,
     category="community",
-    slash_command="/event",
+    slash_command="/event_create",
     requires_confirmation=True,
-    tags=("event", "イベント", "予定"),
+    tags=("event", "イベント", "予定", "スケジュール"),
 )
 
 POLL_CREATE_SPEC = CapabilitySpec(
@@ -51,32 +51,22 @@ POLL_CREATE_SPEC = CapabilitySpec(
 
 
 class CommunityCapabilityDataSource(Protocol):
-    async def search_messages(
-        self,
-        *,
-        context: CapabilityContext,
-        keyword: str,
-        target_channel_id: int | None,
-        target_user_id: int | None,
-        days: int | None,
-    ) -> Any: ...
+    async def search_messages(self, *, context: CapabilityContext, keyword: str, target_channel_id: int | None, target_user_id: int | None, days: int | None) -> Any: ...
 
     async def create_event(
         self,
         *,
         context: CapabilityContext,
-        title: str,
-        date: str,
-        time: str,
+        name: str,
+        start: str,
+        end: str | None,
+        event_type: str,
+        location: str | None,
+        event_channel_id: int | None,
+        description: str | None,
     ) -> Any: ...
 
-    async def create_poll(
-        self,
-        *,
-        context: CapabilityContext,
-        question: str,
-        options: tuple[str, ...],
-    ) -> Any: ...
+    async def create_poll(self, *, context: CapabilityContext, question: str, options: tuple[str, ...]) -> Any: ...
 
 
 async def message_search_handler(data_source, context, *, keyword, target_channel_id, target_user_id, days):
@@ -90,12 +80,27 @@ async def message_search_handler(data_source, context, *, keyword, target_channe
     return CapabilityResult(MESSAGE_SEARCH_CAPABILITY_ID, True, value=value)
 
 
-async def event_create_handler(data_source, context, *, title, date, time):
+async def event_create_handler(
+    data_source,
+    context,
+    *,
+    name,
+    start,
+    end,
+    event_type,
+    location,
+    event_channel_id,
+    description,
+):
     value = await data_source.create_event(
         context=context,
-        title=title,
-        date=date,
-        time=time,
+        name=name,
+        start=start,
+        end=end,
+        event_type=event_type,
+        location=location,
+        event_channel_id=event_channel_id,
+        description=description,
     )
     return CapabilityResult(EVENT_CREATE_CAPABILITY_ID, True, value=value)
 
@@ -126,10 +131,15 @@ def build_community_capability_dispatcher(data_source: CommunityCapabilityDataSo
 
     async def handle_event(context, arguments):
         return await event_create_handler(
-            data_source, context,
-            title=str(arguments["title"]),
-            date=str(arguments["date"]),
-            time=str(arguments["time"]),
+            data_source,
+            context,
+            name=str(arguments["name"]),
+            start=str(arguments["start"]),
+            end=arguments.get("end"),
+            event_type=str(arguments.get("event_type", "external")),
+            location=arguments.get("location"),
+            event_channel_id=arguments.get("event_channel_id"),
+            description=arguments.get("description"),
         )
 
     async def handle_poll(context, arguments):
@@ -166,9 +176,36 @@ async def dispatch_message_search(dispatcher, *, user_id, guild_id, channel_id, 
     )
 
 
-async def dispatch_event_create(dispatcher, *, user_id, guild_id, channel_id, title, date, time, confirmed, interaction=None):
+async def dispatch_event_create(
+    dispatcher,
+    *,
+    user_id,
+    guild_id,
+    channel_id,
+    name,
+    start,
+    end=None,
+    event_type="external",
+    location=None,
+    event_channel_id=None,
+    description=None,
+    confirmed,
+    interaction=None,
+):
     return await dispatcher.dispatch(
-        CapabilityRequest(EVENT_CREATE_CAPABILITY_ID, {"title": title, "date": date, "time": time}, confirmed=confirmed),
+        CapabilityRequest(
+            EVENT_CREATE_CAPABILITY_ID,
+            {
+                "name": name,
+                "start": start,
+                "end": end,
+                "event_type": event_type,
+                "location": location,
+                "event_channel_id": event_channel_id,
+                "description": description,
+            },
+            confirmed=confirmed,
+        ),
         _context(user_id=user_id, guild_id=guild_id, channel_id=channel_id, interaction=interaction),
     )
 
