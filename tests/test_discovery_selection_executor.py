@@ -11,9 +11,10 @@ from services.discovery_selection_executor import execute_discovery_selection
 
 def test_direct_execution_policy_is_fail_closed_and_excludes_fortune_rankings():
     assert DIRECT_EXECUTION_CAPABILITY_IDS == frozenset(
-        {"level", "weekly", "profile", "achievements"}
+        {"level", "leaderboard", "weekly", "profile", "achievements"}
     )
     assert can_direct_execute_discovery_capability("level") is True
+    assert can_direct_execute_discovery_capability("leaderboard") is True
     assert can_direct_execute_discovery_capability("weekly") is True
     assert can_direct_execute_discovery_capability("profile") is True
     assert can_direct_execute_discovery_capability("achievements") is True
@@ -40,7 +41,13 @@ class FakeCommand:
 
 class FakeGeneralCog:
     def __init__(self, calls):
-        for capability_id in ("level", "weekly", "profile", "achievements"):
+        for capability_id in (
+            "level",
+            "leaderboard",
+            "weekly",
+            "profile",
+            "achievements",
+        ):
             setattr(self, capability_id, FakeCommand(capability_id, calls))
 
 
@@ -65,6 +72,7 @@ def interaction_with(cog, user_id=123):
     ("capability_id", "expected_member_marker"),
     [
         ("level", "not-passed"),
+        ("leaderboard", "not-passed"),
         ("weekly", "not-passed"),
         ("profile", None),
         ("achievements", None),
