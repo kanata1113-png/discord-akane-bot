@@ -26,6 +26,8 @@ class RoutingMetric:
     budget_reason: str | None = None
     history_messages: int | None = None
     followup_like: bool | None = None
+    intent_hint: str | None = None
+    estimated_cost_units: float | None = None
     event_id: str | None = None
     event: str = "routing_decision"
 
