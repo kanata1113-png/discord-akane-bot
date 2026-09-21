@@ -6,11 +6,16 @@ from typing import Iterable
 from services.capability_core import CapabilitySpec
 
 
-ACTION_MARKERS = (
+ACTION_VERBS = (
     "見たい",
     "確認",
-    "教えて",
     "表示",
+    "見せて",
+    "知りたい",
+    "占いたい",
+)
+
+CAPABILITY_MARKERS = (
     "ランキング",
     "順位",
     "レベル",
@@ -26,13 +31,17 @@ ACTION_MARKERS = (
     "fortune",
 )
 
-QUESTION_PREFIXES = (
+CHAT_INTENT_MARKERS = (
     "どう思う",
     "なぜ",
     "なんで",
     "理由",
     "分析",
     "比較して",
+    "意味",
+    "とは",
+    "について",
+    "教えて",
 )
 
 
@@ -59,9 +68,16 @@ def should_attempt_discovery(content: str) -> bool:
     text = (content or "").strip().lower()
     if not text or len(text) > 180:
         return False
-    if any(text.startswith(prefix) for prefix in QUESTION_PREFIXES):
+    if any(marker in text for marker in CHAT_INTENT_MARKERS):
         return False
-    return any(marker in text for marker in ACTION_MARKERS)
+
+    has_capability = any(
+        marker in text for marker in CAPABILITY_MARKERS
+    )
+    has_action = any(
+        marker in text for marker in ACTION_VERBS
+    )
+    return has_capability and has_action
 
 
 def shortlist_capabilities(
@@ -92,6 +108,17 @@ def shortlist_capabilities(
         )
         matched = tuple(term for term in terms if term in text)
         semantic_matches = []
+        aliases = {
+            "level": ("レベル",),
+            "achievements": ("実績",),
+            "fortune": ("運勢", "占い"),
+            "profile": ("プロフィール",),
+        }
+        semantic_matches.extend(
+            alias
+            for alias in aliases.get(spec.capability_id, ())
+            if alias in text
+        )
         if (
             spec.capability_id == "rankings"
             and ("ランキング" in text or "順位" in text)

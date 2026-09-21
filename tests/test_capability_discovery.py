@@ -56,7 +56,7 @@ def test_local_discovery_fails_closed_when_no_capability_matches():
 
     assert decision.should_route is False
     assert decision.candidates == ()
-    assert decision.reason == "no_local_candidate"
+    assert decision.reason == "gate_rejected"
 
 
 def test_local_discovery_does_not_execute_any_capability():
