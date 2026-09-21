@@ -126,6 +126,12 @@ class DatabaseFacade:
     async def close_ticket(self, channel_id: int):
         return await self.services.tickets.close_ticket(channel_id)
 
+    async def reopen_ticket(self, channel_id: int):
+        return await self.services.tickets.reopen_ticket(channel_id)
+
+    async def claim_ticket(self, channel_id: int, staff_user_id: int):
+        return await self.services.tickets.claim_ticket(channel_id, staff_user_id)
+
     async def count_open_tickets(self, guild_id: int) -> int:
         return await self.services.tickets.count_open_tickets(guild_id)
 
