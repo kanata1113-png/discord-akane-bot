@@ -4,7 +4,7 @@ import json
 import logging
 from collections import deque
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from threading import Lock
 from typing import Any
@@ -83,6 +83,24 @@ class CostTelemetry:
             "completion_rate": round(completed / total * 100, 1) if total else 0.0,
             "cache_rate": round(cached_tokens / input_tokens * 100, 1) if input_tokens else 0.0,
             "estimated_cost_units": round(sum(e.estimated_cost_units or 0 for e in events), 3),
+        }
+
+    def previous_month_summary(self) -> dict[str, Any]:
+        now_jst = datetime.now(ZoneInfo("Asia/Tokyo"))
+        current_start = now_jst.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        previous_start = (current_start - timedelta(days=1)).replace(day=1)
+        start_utc = previous_start.astimezone(timezone.utc)
+        end_utc = current_start.astimezone(timezone.utc)
+        events = [
+            e for e in self.snapshot()
+            if start_utc <= datetime.fromisoformat(e.created_at or datetime.now(timezone.utc).isoformat()) < end_utc
+        ]
+        input_tokens = sum(e.input_tokens for e in events)
+        output_tokens = sum(e.output_tokens for e in events)
+        return {
+            "requests": len(events),
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
         }
 
     @staticmethod
