@@ -56,7 +56,11 @@ def main() -> int:
 
     sources = Counter(m.get("source", "unknown") for m in decisions)
     selected = Counter(m.get("selected_route", "unknown") for m in decisions)
+    models = Counter(m.get("model", "unknown") for m in decisions)
+    intents = Counter(m.get("intent_hint", "unknown") for m in decisions)
+    budgets = Counter(m.get("budget_reason", "fixed") for m in decisions)
     fallbacks = Counter(m.get("fallback_reason") for m in decisions if m.get("fallback_reason"))
+
     disagreements = [
         m for m in metrics
         if m.get("jev_route") and m.get("legacy_route") and m.get("jev_route") != m.get("legacy_route")
@@ -73,8 +77,7 @@ def main() -> int:
     latencies = [int(m["latency_ms"]) for m in metrics if m.get("latency_ms") is not None]
     confidences = [float(m["confidence"]) for m in metrics if m.get("confidence") is not None]
     confidence_counts = Counter(confidence_bucket(v) for v in confidences)
-    model_counts = Counter(m.get("model", "unknown") for m in decisions)
-    budget_counts = Counter(m.get("budget_reason", "fixed") for m in decisions)
+    relative_costs = [float(m["estimated_cost_units"]) for m in decisions if m.get("estimated_cost_units") is not None]
     followups = sum(bool(m.get("followup_like")) for m in decisions)
 
     print(f"routing decisions: {len(decisions)}")
@@ -86,15 +89,22 @@ def main() -> int:
     print(f"demotions reasoning/deep->normal: {len(demotions)}")
     print(f"follow-up-like decisions: {followups}")
     print("selected routes:", dict(selected))
-    print("models:", dict(model_counts))
+    print("models:", dict(models))
+    print("intent hints:", dict(intents))
     print("fallback reasons:", dict(fallbacks))
     print("confidence buckets:", dict(confidence_counts))
-    print("budget reasons:", dict(budget_counts))
+    print("budget reasons:", dict(budgets))
+
+    if relative_costs:
+        print(f"relative cost units total: {sum(relative_costs):.3f}")
+        print(f"relative cost units mean: {statistics.mean(relative_costs):.3f}")
 
     if latencies:
+        ordered = sorted(latencies)
+        p95_index = max(0, min(len(ordered) - 1, int(len(ordered) * 0.95) - 1))
         print(f"jev latency mean ms: {statistics.mean(latencies):.1f}")
         print(f"jev latency median ms: {statistics.median(latencies):.1f}")
-        print(f"jev latency p95-ish ms: {sorted(latencies)[max(0, int(len(latencies) * 0.95) - 1)]}")
+        print(f"jev latency p95-ish ms: {ordered[p95_index]}")
         print(f"jev latency max ms: {max(latencies)}")
 
     if confidences:
