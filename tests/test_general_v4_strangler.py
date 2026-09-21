@@ -10,7 +10,16 @@ def test_strangler_cog_preserves_inherited_app_command_surface():
 
 
 def test_strangler_cog_overrides_only_migrated_command_callbacks():
-    migrated_names = {"remind", "memory", "forget", "titles", "title_set"}
+    migrated_names = {
+        "translate",
+        "define",
+        "summary",
+        "remind",
+        "memory",
+        "forget",
+        "titles",
+        "title_set",
+    }
 
     for name in migrated_names:
         migrated = getattr(GeneralCog, name)
