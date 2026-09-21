@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from cogs.events import EventsCog
 from config import Config
 from services.capability_core import CapabilityRisk
 from services.reaction_translation import (
@@ -25,6 +26,15 @@ class FakeAI:
 
 def custom_ids(view):
     return {item.custom_id for item in view.children if item.custom_id}
+
+
+def test_events_cog_registers_only_stable_reaction_add_override():
+    listeners = [
+        item
+        for item in EventsCog.__cog_listeners__
+        if item[0] == "on_raw_reaction_add"
+    ]
+    assert listeners == [("on_raw_reaction_add", "on_raw_reaction_add")]
 
 
 def test_reaction_translate_is_event_only_read_only_external_cost_capability():
