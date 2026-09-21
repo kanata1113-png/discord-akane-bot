@@ -2,11 +2,12 @@ from cogs.general import GeneralCog
 from cogs.general_v4 import LegacyGeneralCog
 
 
-def test_strangler_cog_preserves_inherited_app_command_surface():
+def test_strangler_cog_preserves_surface_except_intentional_event_rename():
     legacy = {command.name for command in LegacyGeneralCog.__cog_app_commands__}
     migrated = {command.name for command in GeneralCog.__cog_app_commands__}
 
-    assert migrated == legacy
+    assert migrated == (legacy - {"event"}) | {"event_create"}
+    assert len(migrated) == len(legacy)
 
 
 def test_strangler_cog_overrides_only_migrated_command_callbacks():
@@ -14,6 +15,7 @@ def test_strangler_cog_overrides_only_migrated_command_callbacks():
         "translate",
         "define",
         "summary",
+        "event",
         "remind",
         "memory",
         "forget",
