@@ -11,16 +11,18 @@ ACTION_VERBS = (
     "見たい", "確認", "表示", "見せて", "知りたい", "占いたい",
     "して", "してほしい", "使いたい", "調べたい", "変更", "変えて",
     "設定", "削除", "消して", "忘れて", "登録", "作って", "作成",
-    "追加", "開始", "検索", "探して",
+    "追加", "開始", "検索", "探して", "問い合わせたい", "相談したい",
+    "連絡したい", "聞きたい",
 )
 
 CAPABILITY_MARKERS = (
     "ランキング", "順位", "レベル", "xp", "プロフィール", "実績", "運勢",
     "占い", "称号", "メモリー", "記憶", "履歴", "リマインダー", "翻訳",
     "要約", "辞書", "イベント", "予定", "投票", "アンケート", "検索",
-    "メッセージ", "rank", "level", "profile", "achievement", "fortune",
+    "メッセージ", "問い合わせ", "チケット", "管理人", "管理者", "運営",
+    "サポート", "相談", "rank", "level", "profile", "achievement", "fortune",
     "title", "memory", "remind", "reminder", "translate", "summary", "define",
-    "event", "poll", "search",
+    "event", "poll", "search", "ticket", "support",
 )
 
 CHAT_INTENT_MARKERS = (
@@ -85,6 +87,10 @@ def shortlist_capabilities(
         "message_search": ("検索", "メッセージ検索", "search"),
         "event_create": ("イベント", "イベント作成", "event"),
         "poll_create": ("投票", "アンケート", "poll"),
+        "ticket_create": (
+            "問い合わせ", "問い合わせチケット", "チケット", "管理人", "管理者",
+            "運営", "サポート", "相談", "ticket", "support",
+        ),
     }
 
     for spec in specs:
@@ -134,6 +140,11 @@ def shortlist_capabilities(
             "検索" in text or "探して" in text
         ):
             score += 3.0
+        if spec.capability_id == "ticket_create" and any(
+            marker in text
+            for marker in ("問い合わせたい", "相談したい", "連絡したい", "チケット")
+        ):
+            score += 4.0
         if (
             write_intent.should_route
             and write_intent.capability_id == spec.capability_id
