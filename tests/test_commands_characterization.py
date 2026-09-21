@@ -27,7 +27,7 @@ GENERAL_COMMANDS = {
 
 ADMIN_COMMANDS = {
     "status": "現在の茜Botサーバー設定を確認",
-    "ai_cost": "直近のAI利用コスト・モデル比率を確認",
+    "ai_usagedashboard": "AI利用量・モデル振り分け・Jev Router状態を確認",
     "config_log": "監査ログ設定",
     "config_welcome": "挨拶設定",
     "config_starboard": "殿堂入り設定",
