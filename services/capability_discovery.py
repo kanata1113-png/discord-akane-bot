@@ -13,6 +13,10 @@ ACTION_VERBS = (
     "見せて",
     "知りたい",
     "占いたい",
+    "して",
+    "してほしい",
+    "使いたい",
+    "調べたい",
 )
 
 CAPABILITY_MARKERS = (
@@ -24,11 +28,22 @@ CAPABILITY_MARKERS = (
     "実績",
     "運勢",
     "占い",
+    "称号",
+    "メモリー",
+    "記憶",
+    "翻訳",
+    "要約",
+    "辞書",
     "rank",
     "level",
     "profile",
     "achievement",
     "fortune",
+    "title",
+    "memory",
+    "translate",
+    "summary",
+    "define",
 )
 
 CHAT_INTENT_MARKERS = (
@@ -91,6 +106,19 @@ def shortlist_capabilities(
     text = (content or "").strip().lower()
     ranked: list[DiscoveryCandidate] = []
 
+    aliases = {
+        "level": ("レベル",),
+        "leaderboard": ("レベルランキング",),
+        "achievements": ("実績",),
+        "fortune": ("運勢", "占い"),
+        "profile": ("プロフィール",),
+        "titles": ("称号",),
+        "memory_status": ("メモリー", "記憶"),
+        "translate": ("翻訳",),
+        "summary": ("要約",),
+        "define": ("辞書",),
+    }
+
     for spec in specs:
         if not spec.discoverable:
             continue
@@ -107,18 +135,11 @@ def shortlist_capabilities(
             )
         )
         matched = tuple(term for term in terms if term in text)
-        semantic_matches = []
-        aliases = {
-            "level": ("レベル",),
-            "achievements": ("実績",),
-            "fortune": ("運勢", "占い"),
-            "profile": ("プロフィール",),
-        }
-        semantic_matches.extend(
+        semantic_matches = [
             alias
             for alias in aliases.get(spec.capability_id, ())
             if alias in text
-        )
+        ]
         if (
             spec.capability_id == "rankings"
             and ("ランキング" in text or "順位" in text)
@@ -138,6 +159,8 @@ def shortlist_capabilities(
             "今週" in text or "週間" in text
         ):
             score += 3.0
+        if spec.capability_id == "leaderboard" and "レベル" in text:
+            score += 2.0
 
         ranked.append(
             DiscoveryCandidate(
