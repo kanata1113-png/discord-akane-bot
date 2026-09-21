@@ -44,11 +44,22 @@ class FakeResponse:
         return self._done
 
 
+class FakeMessage:
+    def __init__(self):
+        self.edited = None
+
+    async def edit(self, *, content, view):
+        self.edited = {
+            "content": content,
+            "view": view,
+        }
+
+
 class FakeInteraction:
-    def __init__(self, user_id):
+    def __init__(self, user_id, *, with_message=False):
         self.user = SimpleNamespace(id=user_id)
         self.response = FakeResponse()
-        self.message = None
+        self.message = FakeMessage() if with_message else None
 
 
 def test_panel_caps_candidate_buttons_at_four_and_contains_no_dispatcher():
@@ -93,6 +104,71 @@ def test_buttons_are_existing_capability_metadata_only():
 
 
 @pytest.mark.asyncio
+async def test_requester_selection_invokes_execution_only_after_button_press(
+    monkeypatch,
+):
+    calls = []
+
+    async def fake_execute(interaction, selected):
+        calls.append(selected.capability_id)
+        interaction.response._done = True
+        return True
+
+    monkeypatch.setattr(
+        "views.capability_candidate_view.execute_selected_read_only",
+        fake_execute,
+    )
+
+    view = CapabilityCandidateView(
+        (candidate("weekly", "今週のXPランキング", "/weekly"),),
+        requester_id=123,
+    )
+    interaction = FakeInteraction(user_id=123, with_message=True)
+
+    assert calls == []
+    assert await view.interaction_check(interaction) is True
+    await view.children[0].callback(interaction)
+
+    assert calls == ["weekly"]
+    assert view.selection.capability_id == "weekly"
+    assert view.cancelled is False
+    assert all(item.disabled for item in view.children)
+    assert view.is_finished()
+    assert "実行済み" in interaction.message.edited["content"]
+    assert interaction.message.edited["view"] is view
+
+
+@pytest.mark.asyncio
+async def test_guidance_only_selection_does_not_claim_execution(monkeypatch):
+    calls = []
+
+    async def fake_execute(interaction, selected):
+        calls.append(selected.capability_id)
+        return False
+
+    monkeypatch.setattr(
+        "views.capability_candidate_view.execute_selected_read_only",
+        fake_execute,
+    )
+
+    view = CapabilityCandidateView(
+        (candidate("rankings", "サーバー内ランキング", "/rankings"),),
+        requester_id=123,
+    )
+    interaction = FakeInteraction(user_id=123)
+
+    assert await view.interaction_check(interaction) is True
+    await view.children[0].callback(interaction)
+
+    assert calls == ["rankings"]
+    assert view.selection.capability_id == "rankings"
+    assert all(item.disabled for item in view.children)
+    assert view.is_finished()
+    assert "直接実行せず" in interaction.response.edited["content"]
+    assert "`/rankings`" in interaction.response.edited["content"]
+
+
+@pytest.mark.asyncio
 async def test_cancel_is_requester_only():
     view = CapabilityCandidateView(
         (candidate("weekly", "今週のXPランキング", "/weekly"),),
@@ -113,7 +189,15 @@ async def test_cancel_is_requester_only():
 
 
 @pytest.mark.asyncio
-async def test_cancel_stops_panel_without_selection_or_execution():
+async def test_cancel_stops_panel_without_selection_or_execution(monkeypatch):
+    async def must_not_execute(*args, **kwargs):
+        raise AssertionError("cancel must not invoke execution")
+
+    monkeypatch.setattr(
+        "views.capability_candidate_view.execute_selected_read_only",
+        must_not_execute,
+    )
+
     view = CapabilityCandidateView(
         (candidate("weekly", "今週のXPランキング", "/weekly"),),
         requester_id=123,
@@ -121,7 +205,7 @@ async def test_cancel_stops_panel_without_selection_or_execution():
     interaction = FakeInteraction(user_id=123)
 
     assert await view.interaction_check(interaction) is True
-    await view._cancel(interaction)
+    await view.children[-1].callback(interaction)
 
     assert view.cancelled is True
     assert view.selection is None
