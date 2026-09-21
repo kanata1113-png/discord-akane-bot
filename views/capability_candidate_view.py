@@ -181,9 +181,16 @@ class CapabilityCandidateView(discord.ui.View):
 
 def candidate_panel_text(candidates: Sequence[DiscoveryCandidate]) -> str:
     count = min(len(tuple(candidates)), 4)
+    if count == 1:
+        return (
+            "🔎 もしかして、探してる機能はこれやろか？\n"
+            "下のボタンを押したら操作を始めるで。"
+            "必要な確認は途中でちゃんと聞くから安心してな👌\n"
+            "違ってたら「キャンセル」で戻れるで！"
+        )
     return (
-        "もしかして、次の機能を探してる？\n"
-        f"候補は{count}件や。使いたいものを選んでな。"
-        "\n※ 対応済みの読み取り機能は選択後にそのまま実行。"
-        "条件が必要な機能は入力を案内し、書き込みは必ず確認を挟むで。"
+        "🔎 もしかして、探してる機能はこのへんやろか？\n"
+        f"候補を{count}件見つけたで。使いたいものを選んでな👇\n"
+        "必要な確認は途中でちゃんと聞くから安心してな。"
+        "違ってたら「キャンセル」で大丈夫やで！"
     )
