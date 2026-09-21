@@ -177,6 +177,7 @@ class RoutingPolicy:
         content: str,
         legacy: RouteSelection,
         context: RoutingContext | None = None,
+        event_id: str | None = None,
     ) -> None:
         if not self.jev_router.is_configured:
             return
@@ -188,7 +189,7 @@ class RoutingPolicy:
             confidence=decision.confidence,
             latency_ms=decision.latency_ms,
             fallback_reason=None if decision.accepted else self.fallback_reason(decision),
-            event_id=self.telemetry.new_event_id(),
+            event_id=event_id or self.telemetry.new_event_id(),
             history_messages=context.history_messages if context else None,
             followup_like=context.followup_like if context else None,
         )
@@ -200,10 +201,13 @@ class RoutingPolicy:
         content: str,
         legacy: RouteSelection,
         context: RoutingContext | None = None,
+        event_id: str | None = None,
     ) -> None:
         if not self.jev_router.is_configured:
             return
-        task = asyncio.create_task(self._observe_shadow(content, legacy, context))
+        task = asyncio.create_task(
+            self._observe_shadow(content, legacy, context, event_id)
+        )
         self._shadow_tasks.add(task)
         task.add_done_callback(self._shadow_tasks.discard)
 
@@ -225,7 +229,7 @@ class RoutingPolicy:
             return selected
 
         if mode == "shadow":
-            self._schedule_shadow(content, legacy, context)
+            self._schedule_shadow(content, legacy, context, event_id)
             selected = replace(legacy, mode="shadow", **context_fields)
             selected = self._finalize(selected, content)
             self._emit(selected)
