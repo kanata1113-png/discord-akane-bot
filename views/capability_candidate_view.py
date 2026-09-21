@@ -7,14 +7,22 @@ import discord
 
 from services.capability_discovery import DiscoveryCandidate
 from services.discovery_selection_executor import execute_discovery_selection
+from views.community_write_view import CommunityWriteEntryView
 from views.write_capability_view import (
     WriteCapabilityEntryView,
     write_capability_panel_text,
 )
 
 
+# Frozen Release D contract. Existing D regression tests intentionally assert
+# this exact set so later releases cannot silently rewrite historical scope.
 WRITE_CONFIRM_DISCOVERY_IDS = frozenset(
     {"title_set", "memory_forget", "remind"}
+)
+
+COMMUNITY_WRITE_DISCOVERY_IDS = frozenset({"event_create", "poll_create"})
+RELEASE_E_WRITE_CONFIRM_DISCOVERY_IDS = frozenset(
+    {*WRITE_CONFIRM_DISCOVERY_IDS, *COMMUNITY_WRITE_DISCOVERY_IDS}
 )
 
 
@@ -31,12 +39,7 @@ SelectionCallback = Callable[
 
 
 class CapabilityCandidateView(discord.ui.View):
-    """Discovery panel gated by an explicit requester selection.
-
-    Read-only direct execution stays governed by the existing executor.
-    Release D WRITE_CONFIRM candidates are routed into a separate requester-only
-    argument/confirmation flow and are never sent to direct execution.
-    """
+    """Discovery panel gated by an explicit requester selection."""
 
     def __init__(
         self,
@@ -75,21 +78,15 @@ class CapabilityCandidateView(discord.ui.View):
             custom_id="cap_discovery:cancel",
         )
 
-        async def cancel_callback(
-            interaction: discord.Interaction,
-        ) -> None:
+        async def cancel_callback(interaction: discord.Interaction) -> None:
             await self._cancel(interaction)
 
         cancel_button.callback = cancel_callback
         self.add_item(cancel_button)
 
-    async def interaction_check(
-        self,
-        interaction: discord.Interaction,
-    ) -> bool:
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.requester_id:
             return True
-
         await interaction.response.send_message(
             "この候補はリクエストした本人だけ選べるで。",
             ephemeral=True,
@@ -110,14 +107,22 @@ class CapabilityCandidateView(discord.ui.View):
             item.disabled = True
         self.stop()
 
-        if candidate.capability_id in WRITE_CONFIRM_DISCOVERY_IDS:
-            await interaction.response.edit_message(
-                content=write_capability_panel_text(candidate.name),
-                view=WriteCapabilityEntryView(
+        if candidate.capability_id in RELEASE_E_WRITE_CONFIRM_DISCOVERY_IDS:
+            if candidate.capability_id in COMMUNITY_WRITE_DISCOVERY_IDS:
+                view = CommunityWriteEntryView(
                     requester_id=self.requester_id,
                     capability_id=candidate.capability_id,
                     capability_name=candidate.name,
-                ),
+                )
+            else:
+                view = WriteCapabilityEntryView(
+                    requester_id=self.requester_id,
+                    capability_id=candidate.capability_id,
+                    capability_name=candidate.name,
+                )
+            await interaction.response.edit_message(
+                content=write_capability_panel_text(candidate.name),
+                view=view,
             )
             return
 
@@ -149,16 +154,11 @@ class CapabilityCandidateView(discord.ui.View):
         else:
             await interaction.response.edit_message(content=content, view=self)
 
-    async def _cancel(
-        self,
-        interaction: discord.Interaction,
-    ) -> None:
+    async def _cancel(self, interaction: discord.Interaction) -> None:
         self.cancelled = True
         self.selection = None
-
         for item in self.children:
             item.disabled = True
-
         await interaction.response.edit_message(
             content=(
                 "キャンセル済みやで。\n"
@@ -169,9 +169,7 @@ class CapabilityCandidateView(discord.ui.View):
         self.stop()
 
 
-def candidate_panel_text(
-    candidates: Sequence[DiscoveryCandidate],
-) -> str:
+def candidate_panel_text(candidates: Sequence[DiscoveryCandidate]) -> str:
     count = min(len(tuple(candidates)), 4)
     return (
         "もしかして、次の機能を探してる？\n"

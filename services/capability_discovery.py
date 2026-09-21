@@ -10,14 +10,17 @@ from services.write_intent_discovery import discover_write_intent
 ACTION_VERBS = (
     "見たい", "確認", "表示", "見せて", "知りたい", "占いたい",
     "して", "してほしい", "使いたい", "調べたい", "変更", "変えて",
-    "設定", "削除", "消して", "忘れて", "登録", "作って", "追加",
+    "設定", "削除", "消して", "忘れて", "登録", "作って", "作成",
+    "追加", "開始", "検索", "探して",
 )
 
 CAPABILITY_MARKERS = (
     "ランキング", "順位", "レベル", "xp", "プロフィール", "実績", "運勢",
     "占い", "称号", "メモリー", "記憶", "履歴", "リマインダー", "翻訳",
-    "要約", "辞書", "rank", "level", "profile", "achievement", "fortune",
+    "要約", "辞書", "イベント", "予定", "投票", "アンケート", "検索",
+    "メッセージ", "rank", "level", "profile", "achievement", "fortune",
     "title", "memory", "remind", "reminder", "translate", "summary", "define",
+    "event", "poll", "search",
 )
 
 CHAT_INTENT_MARKERS = (
@@ -79,15 +82,15 @@ def shortlist_capabilities(
         "translate": ("翻訳",),
         "summary": ("要約",),
         "define": ("辞書",),
+        "message_search": ("検索", "メッセージ検索", "search"),
+        "event_create": ("イベント", "イベント作成", "event"),
+        "poll_create": ("投票", "アンケート", "poll"),
     }
 
     for spec in specs:
         if not spec.discoverable:
             continue
 
-        # WRITE_CONFIRM candidates may participate only when the dedicated local
-        # write-intent gate resolved that exact capability. This prevents broad
-        # nouns such as "称号" or "記憶" from stealing read-only requests.
         if spec.risk is CapabilityRisk.WRITE_CONFIRM and (
             not write_intent.should_route
             or write_intent.capability_id != spec.capability_id
@@ -127,6 +130,10 @@ def shortlist_capabilities(
             score += 3.0
         if spec.capability_id == "leaderboard" and "レベル" in text:
             score += 2.0
+        if spec.capability_id == "message_search" and (
+            "検索" in text or "探して" in text
+        ):
+            score += 3.0
         if (
             write_intent.should_route
             and write_intent.capability_id == spec.capability_id

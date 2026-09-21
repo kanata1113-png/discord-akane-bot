@@ -17,15 +17,14 @@ _MEMORY_SUBJECTS = ("メモリー", "記憶", "履歴", "memory")
 _MEMORY_DELETES = ("消して", "削除", "忘れて", "忘れ", "clear", "delete", "forget")
 _REMINDER_SUBJECTS = ("リマインダー", "reminder", "remind")
 _REMINDER_ACTIONS = ("登録", "設定", "作って", "追加", "お願い", "して", "したい")
+_EVENT_SUBJECTS = ("イベント", "event", "予定")
+_EVENT_ACTIONS = ("作って", "作成", "登録", "設定", "追加", "開いて")
+_POLL_SUBJECTS = ("投票", "アンケート", "poll")
+_POLL_ACTIONS = ("作って", "作成", "開始", "登録", "追加", "取りたい")
 
 
 def discover_write_intent(content: str) -> WriteIntentDecision:
-    """Detect the small Release D WRITE_CONFIRM pilot locally.
-
-    This gate never executes anything. It only decides whether the message should
-    enter the dedicated confirmation UI rather than read-only discovery or AI
-    chat. Ambiguous or unsupported write-like text fails closed.
-    """
+    """Detect approved WRITE_CONFIRM intents locally without executing them."""
 
     text = (content or "").strip().lower()
     if not text or len(text) > 180:
@@ -54,6 +53,26 @@ def discover_write_intent(content: str) -> WriteIntentDecision:
             "remind",
             "リマインダー登録",
             "reminder_write",
+        )
+
+    if any(subject in text for subject in _EVENT_SUBJECTS) and any(
+        verb in text for verb in _EVENT_ACTIONS
+    ):
+        return WriteIntentDecision(
+            True,
+            "event_create",
+            "イベント作成",
+            "event_create",
+        )
+
+    if any(subject in text for subject in _POLL_SUBJECTS) and any(
+        verb in text for verb in _POLL_ACTIONS
+    ):
+        return WriteIntentDecision(
+            True,
+            "poll_create",
+            "投票作成",
+            "poll_create",
         )
 
     return WriteIntentDecision(False)

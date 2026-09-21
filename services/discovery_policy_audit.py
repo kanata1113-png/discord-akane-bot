@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from services.capability_catalog import DISCOVERY_RELEASE_D_SPECS
+from services.capability_catalog import DISCOVERY_RELEASE_E_SPECS
 from services.capability_core import CapabilityRisk, CapabilitySpec
 from services.discovery_execution_policy import DIRECT_EXECUTION_CAPABILITY_IDS
 
@@ -27,13 +27,16 @@ SELECTION_ONLY_REASONS = {
     "title_set": "write_confirm_flow",
     "memory_forget": "write_confirm_flow",
     "remind": "write_confirm_flow",
+    "message_search": "required_arguments",
+    "event_create": "write_confirm_flow",
+    "poll_create": "write_confirm_flow",
 }
 
 LEGACY_BOOKKEEPING_DIRECT_EXECUTION = frozenset({"profile", "achievements"})
 
 
 def audit_discovery_policy(
-    specs: tuple[CapabilitySpec, ...] = DISCOVERY_RELEASE_D_SPECS,
+    specs: tuple[CapabilitySpec, ...] = DISCOVERY_RELEASE_E_SPECS,
 ) -> tuple[DiscoveryPolicyRecord, ...]:
     records = []
     for spec in specs:
