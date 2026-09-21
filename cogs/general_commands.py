@@ -1,7 +1,5 @@
-import hashlib
 import io
 import logging
-import random
 
 from datetime import datetime, timedelta
 from typing import Optional
@@ -17,6 +15,7 @@ from views.event_view import EventView
 from services.progression_capabilities import (
     build_progression_pilot_dispatcher,
     dispatch_achievements,
+    dispatch_fortune,
     dispatch_level,
     dispatch_profile,
     dispatch_rankings,
@@ -1297,77 +1296,23 @@ class GeneralCog(commands.Cog):
             guild_id = interaction.guild.id
             user_id = interaction.user.id
 
-            existing = await self.bot.db.get_today_fortune(
-                guild_id,
-                user_id
+            today = datetime.now(
+                JST
+            ).strftime(
+                "%Y-%m-%d"
             )
 
-            is_new = existing is None
+            result = await dispatch_fortune(
+                self._capability_dispatcher,
+                user_id=user_id,
+                guild_id=guild_id,
+                channel_id=interaction.channel_id,
+                today=today
+            )
 
-            if existing:
-
-                fortune_key = existing[0]
-                score = int(
-                    existing[1]
-                )
-
-            else:
-
-                today = datetime.now(
-                    JST
-                ).strftime(
-                    "%Y-%m-%d"
-                )
-
-                seed_text = (
-                    f"{guild_id}:"
-                    f"{user_id}:"
-                    f"{today}:"
-                    "akane-v33"
-                )
-
-                digest = hashlib.sha256(
-                    seed_text.encode(
-                        "utf-8"
-                    )
-                ).hexdigest()
-
-                rng = random.Random(
-                    int(
-                        digest[:16],
-                        16
-                    )
-                )
-
-                score = rng.randint(
-                    1,
-                    100
-                )
-
-                if score >= 96:
-                    fortune_key = "super_lucky"
-                elif score >= 81:
-                    fortune_key = "great_lucky"
-                elif score >= 61:
-                    fortune_key = "lucky"
-                elif score >= 41:
-                    fortune_key = "small_lucky"
-                elif score >= 21:
-                    fortune_key = "neutral"
-                else:
-                    fortune_key = "careful"
-
-                await self.bot.db.save_today_fortune(
-                    guild_id,
-                    user_id,
-                    fortune_key,
-                    score
-                )
-
-                await self.bot.db.increment_fortune_count(
-                    guild_id,
-                    user_id
-                )
+            fortune_key = result.value["fortune_key"]
+            score = result.value["score"]
+            is_new = result.value["is_new"]
 
             fortunes = {
                 "super_lucky": (
