@@ -10,9 +10,15 @@ from services.discovery_selection_executor import execute_discovery_selection
 from views.community_write_view import (
     CommunityWriteEntryView,
     EventTypeChoiceView,
+    PollCreateModal,
 )
 from views.parameterized_capability_view import ParameterizedCapabilityEntryView
-from views.write_capability_view import WriteCapabilityEntryView, write_capability_panel_text
+from views.write_capability_view import (
+    ForgetScopeView,
+    RemindModal,
+    TitleSetModal,
+    WriteCapabilityEntryView,
+)
 
 
 # Frozen Release D contract.
@@ -99,22 +105,77 @@ class CapabilityCandidateView(discord.ui.View):
             item.disabled = True
         self.stop()
 
+        # J1: selecting a WRITE_CONFIRM candidate starts argument/scope collection
+        # immediately. We intentionally do not show another identical capability
+        # button. The final mutation confirmation remains unchanged.
         if candidate.capability_id in RELEASE_E_WRITE_CONFIRM_DISCOVERY_IDS:
-            if candidate.capability_id in COMMUNITY_WRITE_DISCOVERY_IDS:
-                view = CommunityWriteEntryView(
-                    requester_id=self.requester_id,
-                    capability_id=candidate.capability_id,
-                    capability_name=candidate.name,
+            if candidate.capability_id == "event_create":
+                await interaction.response.edit_message(
+                    content=(
+                        "📅 イベント作成やな！開催形式を選んでな👇\n"
+                        "最後に内容を確認してから作成するから、ここではまだ登録されへんで👌"
+                    ),
+                    view=EventTypeChoiceView(requester_id=self.requester_id),
                 )
-            else:
-                view = WriteCapabilityEntryView(
-                    requester_id=self.requester_id,
-                    capability_id=candidate.capability_id,
-                    capability_name=candidate.name,
+                return
+
+            if candidate.capability_id == "memory_forget":
+                await interaction.response.edit_message(
+                    content="🧹 削除する会話履歴の範囲を選んでな。最後にもう一度確認するで。",
+                    view=ForgetScopeView(requester_id=self.requester_id),
                 )
+                return
+
+            if candidate.capability_id == "title_set":
+                await interaction.message.edit(
+                    content="🎖️ 変更したい称号を入力してな。確定までは変更されへんで👌",
+                    view=self,
+                )
+                await interaction.response.send_modal(
+                    TitleSetModal(requester_id=self.requester_id)
+                )
+                return
+
+            if candidate.capability_id == "remind":
+                await interaction.message.edit(
+                    content="⏰ リマインダーの内容を入力してな。登録前にちゃんと確認するで👌",
+                    view=self,
+                )
+                await interaction.response.send_modal(
+                    RemindModal(requester_id=self.requester_id)
+                )
+                return
+
+            if candidate.capability_id == "poll_create":
+                await interaction.message.edit(
+                    content="📊 投票内容を入力してな。作成前に最終確認するで👌",
+                    view=self,
+                )
+                await interaction.response.send_modal(
+                    PollCreateModal(requester_id=self.requester_id)
+                )
+                return
+
+            # Fail closed if a new WRITE_CONFIRM capability is added without a
+            # dedicated direct handoff path.
             await interaction.response.edit_message(
-                content=write_capability_panel_text(candidate.name),
-                view=view,
+                content=(
+                    f"✨ **{candidate.name}** やな！\n"
+                    "下のボタンから操作を始めてな。最終確認までは何も変更されへんで👌"
+                ),
+                view=(
+                    CommunityWriteEntryView(
+                        requester_id=self.requester_id,
+                        capability_id=candidate.capability_id,
+                        capability_name=candidate.name,
+                    )
+                    if candidate.capability_id in COMMUNITY_WRITE_DISCOVERY_IDS
+                    else WriteCapabilityEntryView(
+                        requester_id=self.requester_id,
+                        capability_id=candidate.capability_id,
+                        capability_name=candidate.name,
+                    )
+                ),
             )
             return
 
@@ -133,7 +194,7 @@ class CapabilityCandidateView(discord.ui.View):
             await interaction.response.edit_message(
                 content=(
                     f"✨ **{candidate.name}** やな！\n"
-                    "必要な条件だけ聞くから、下のボタンから進んでな。"
+                    "必要な条件だけ聞くから、下のボタンから進んでな👇"
                 ),
                 view=view,
             )
@@ -202,11 +263,7 @@ def single_candidate_handoff(
     *,
     requester_id: int,
 ) -> tuple[str, discord.ui.View]:
-    """Skip the redundant candidate-selection layer for one exact candidate.
-
-    This does not skip the capability's own confirmation boundary. It only moves
-    the user directly to the operation-specific entry UI.
-    """
+    """Build operation-specific entry UI for a single unambiguous candidate."""
 
     if candidate.capability_id == "event_create":
         return (
