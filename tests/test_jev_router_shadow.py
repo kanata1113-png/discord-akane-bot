@@ -168,8 +168,8 @@ async def test_accepted_jev_route_controls_production_model_and_budget():
         telemetry=telemetry,
     ).select("比較して考えて")
 
-    assert selection.model == Config.REASONING_MODEL
-    assert selection.reasoning_effort == Config.REASONING_EFFORT
+    assert selection.model == Config.CHAT_MODEL
+    assert selection.reasoning_effort == Config.CHAT_REASONING_EFFORT
     assert selection.route == "reasoning"
     assert selection.max_output_tokens == Config.REASONING_MAX_TOKENS
     assert selection.source == "jev"
@@ -295,7 +295,7 @@ async def test_regulation_prompt_is_preserved_when_jev_selects_normal_chat():
     )
 
     assert reply == "ok"
-    assert model == Config.CHAT_MODEL
+    assert model == Config.FAST_MODEL
     assert route == "normal-chat"
     assert "【表現の自由・規制関連】" in captured["system"]
 
