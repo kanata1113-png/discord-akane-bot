@@ -30,19 +30,27 @@ class BackgroundTasksCog(commands.Cog):
     @tasks.loop(seconds=60)
     async def loop_reminders(self):
         try:
-            rows = await self.bot.services.maintenance.claim_due_reminders()
+            rows = await self.bot.services.maintenance.list_due_reminders()
 
             for reminder_id, user_id, channel_id, reminder_message in rows:
                 channel = self.bot.get_channel(channel_id)
                 if not channel:
+                    logger.warning(
+                        "Reminder channel unavailable; keeping reminder pending | "
+                        f"reminder_id={reminder_id} channel_id={channel_id}"
+                    )
                     continue
 
                 try:
                     await channel.send(
                         f"⏰ <@{user_id}> リマインダー: {reminder_message}"
                     )
+                    await self.bot.services.maintenance.delete_reminder(reminder_id)
                 except Exception as error:
-                    logger.exception(f"Reminder send failed: {error}")
+                    logger.exception(
+                        "Reminder send failed; keeping reminder pending | "
+                        f"reminder_id={reminder_id} error={error}"
+                    )
 
         except Exception as error:
             logger.exception(f"Reminder loop failed: {error}")

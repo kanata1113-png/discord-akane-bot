@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import logging
+
 from config import Config
 from database import DatabaseManager
 from services.registry import ServiceRegistry
+
+
+logger = logging.getLogger("AkaneBot")
 
 
 class DatabaseFacade:
@@ -11,15 +16,27 @@ class DatabaseFacade:
     Existing Cog/View call sites keep using ``bot.db`` during the staged
     migration. Selected stable public methods are routed through Service and
     Repository layers; everything else delegates to the legacy manager.
+
+    Legacy fallback remains intentionally available during dogfood, but every
+    distinct fallback name is recorded so the remaining migration surface can
+    be audited without changing runtime behavior.
     """
 
     def __init__(self, legacy: DatabaseManager, services: ServiceRegistry):
         self.legacy = legacy
         self.services = services
         self.path = legacy.path
+        self._legacy_fallbacks_seen: set[str] = set()
 
     def __getattr__(self, name):
+        if name not in self._legacy_fallbacks_seen:
+            self._legacy_fallbacks_seen.add(name)
+            logger.debug("DatabaseFacade legacy fallback | method=%s", name)
         return getattr(self.legacy, name)
+
+    def get_legacy_fallbacks_seen(self) -> tuple[str, ...]:
+        """Return legacy method names observed during this process lifetime."""
+        return tuple(sorted(self._legacy_fallbacks_seen))
 
     async def init(self):
         return await self.legacy.init()

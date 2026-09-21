@@ -37,7 +37,7 @@ def test_background_cog_owns_scheduled_loops():
 
 
 @pytest.mark.asyncio
-async def test_due_reminders_are_claimed_atomically(tmp_path):
+async def test_due_reminders_remain_pending_until_delivery_ack(tmp_path):
     db_path = str(tmp_path / "phase6.db")
     legacy = DatabaseManager(db_path)
     await legacy.init()
@@ -53,9 +53,12 @@ async def test_due_reminders_are_claimed_atomically(tmp_path):
         (10, 20, "hello", "2000-01-01T00:00:00+09:00"),
     )
 
-    first = await services.maintenance.claim_due_reminders()
-    second = await services.maintenance.claim_due_reminders()
+    first = await services.maintenance.list_due_reminders()
+    second = await services.maintenance.list_due_reminders()
 
     assert len(first) == 1
     assert first[0][1:] == (10, 20, "hello")
-    assert second == []
+    assert second == first
+
+    await services.maintenance.delete_reminder(first[0][0])
+    assert await services.maintenance.list_due_reminders() == []
