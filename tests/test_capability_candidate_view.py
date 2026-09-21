@@ -41,6 +41,10 @@ class FakeResponse:
         }
         self._done = True
 
+    async def send_modal(self, modal):
+        self.modal = modal
+        self._done = True
+
     def is_done(self):
         return self._done
 
@@ -84,12 +88,16 @@ def test_panel_caps_candidate_buttons_at_four_and_contains_no_dispatcher():
     assert not hasattr(view, "handler")
 
 
-def test_panel_copy_explains_approved_reads_execute_after_selection():
+def test_panel_copy_is_human_facing_and_explains_safe_start():
     text = candidate_panel_text(
         (candidate("weekly", "今週のXPランキング", "/weekly"),)
     )
 
-    assert "選択後にそのまま実行" in text
+    assert "🔎" in text
+    assert "操作を始める" in text
+    assert "確認" in text
+    assert "READ_ONLY" not in text
+    assert "書き込み" not in text
 
 
 def test_buttons_are_existing_capability_metadata_only():
@@ -128,7 +136,7 @@ async def test_explicit_selection_invokes_execution_callback_once_and_disables_p
     assert all(item.disabled for item in view.children)
     assert view.is_finished()
     assert interaction.message.edited["view"] is view
-    assert "実行済み" in interaction.message.edited["content"]
+    assert "実行した" in interaction.message.edited["content"]
 
 
 @pytest.mark.asyncio
@@ -144,7 +152,7 @@ async def test_selection_only_mode_remains_available_explicitly():
     await view._select(interaction, weekly)
 
     assert view.selection.capability_id == "weekly"
-    assert "まだ自動実行はしてへん" in interaction.response.edited["content"]
+    assert "自動実行せえへん" in interaction.response.edited["content"]
     assert all(item.disabled for item in view.children)
 
 
@@ -166,7 +174,7 @@ async def test_non_executable_selection_fails_closed_without_execution_result():
 
     assert view.selection.capability_id == "rankings"
     assert interaction.response.sent is None
-    assert "直接実行対象外" in interaction.response.edited["content"]
+    assert "直接は実行せえへん" in interaction.response.edited["content"]
     assert all(item.disabled for item in view.children)
 
 
@@ -182,7 +190,7 @@ async def test_cancel_is_requester_only():
 
     assert allowed is False
     assert interaction.response.sent == {
-        "content": "この候補はリクエストした本人だけ選べるで。",
+        "content": "この操作はリクエストした本人だけ使えるで。",
         "ephemeral": True,
     }
     assert view.cancelled is False
@@ -214,7 +222,7 @@ async def test_cancel_stops_panel_without_selection_or_execution():
     assert all(item.disabled for item in view.children)
     assert view.is_finished()
     assert interaction.response.edited["view"] is view
-    assert "キャンセル済み" in interaction.response.edited["content"]
-    assert "処理はここで終了" in interaction.response.edited["content"]
+    assert "キャンセル" in interaction.response.edited["content"]
+    assert "何も実行してへん" in interaction.response.edited["content"]
     assert not hasattr(view, "dispatcher")
     assert not hasattr(view, "handler")
