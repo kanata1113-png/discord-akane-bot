@@ -89,7 +89,7 @@ class AIOrchestrator:
         reply = await self.generate(
             system=plan.system_prompt, user=plan.user_prompt, model=plan.route.model,
             max_tokens=plan.budget.max_output_tokens, history=history,
-            reasoning_effort=plan.route.reasoning_effort, route=plan.route.route,
+            reasoning_effort=plan.route.reasoning_effort,
         )
         self.telemetry.emit(ControlPlaneEvent(
             event_id=plan.route.event_id, phase="execution_complete", route=plan.route.route,
