@@ -15,9 +15,9 @@ class OutputBudget:
 class OutputBudgetPolicy:
     """Cost-conscious soft character targets backed by conservative token caps.
 
-    Default and compact requests can move within narrow safe ranges based on
-    request length. Expanded requests keep the established completion-oriented
-    ceilings to avoid repeating production truncation failures.
+    Adaptation deliberately preserves the verified Terra default baseline.
+    Only clearly safe short Luna requests and unusually long standard/deep
+    requests are adjusted. Expanded requests keep completion-oriented ceilings.
     """
 
     DEFAULTS = {
@@ -58,9 +58,6 @@ class OutputBudgetPolicy:
         if detail_level == "default":
             if model == Config.FAST_MODEL and length and length <= 40:
                 tokens = 600
-                reason += "_short"
-            elif model == Config.CHAT_MODEL and length and length <= 80:
-                tokens = 1100
                 reason += "_short"
             elif model == Config.CHAT_MODEL and length >= 500:
                 tokens = 1500
