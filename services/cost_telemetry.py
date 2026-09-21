@@ -5,6 +5,7 @@ import logging
 from collections import deque
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from threading import Lock
 from typing import Any
 
@@ -52,8 +53,10 @@ class CostTelemetry:
         with self._lock:
             return list(self._events)
 
-    def summary(self) -> dict[str, Any]:
+    def summary(self, *, since: datetime | None = None) -> dict[str, Any]:
         events = self.snapshot()
+        if since is not None:
+            events = [e for e in events if datetime.fromisoformat(e.created_at or datetime.now(timezone.utc).isoformat()) >= since]
         by_model = {Config.FAST_MODEL: 0, Config.CHAT_MODEL: 0, Config.REASONING_MODEL: 0}
         for event in events:
             by_model[event.model] = by_model.get(event.model, 0) + 1
@@ -86,3 +89,10 @@ class CostTelemetry:
     def estimate_actual_units(model: str, input_tokens: int, output_tokens: int) -> float:
         # Relative units until provider pricing is explicitly configured.
         return round(CostPolicy.model_weight(model) * (input_tokens + output_tokens) / 1000.0, 3)
+
+
+    @staticmethod
+    def month_start_utc() -> datetime:
+        now_jst = datetime.now(ZoneInfo("Asia/Tokyo"))
+        start_jst = now_jst.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        return start_jst.astimezone(timezone.utc)

@@ -359,25 +359,81 @@ class AdminCommands(app_commands.Group):
                 )
 
     @app_commands.command(
-        name="ai_cost",
-        description="直近のAI利用コスト・モデル比率を確認"
+        name="ai_usagedashboard",
+        description="AI利用量・モデル振り分け・Jev Router状態を確認"
     )
-    async def ai_cost(self, interaction: discord.Interaction):
-        telemetry = getattr(getattr(self.bot.ai, "executor", None), "cost_telemetry", None)
-        summary = telemetry.summary() if telemetry else {
-            "requests": 0, "luna": 0, "terra": 0, "sol": 0, "sol_rate": 0.0,
-            "input_tokens": 0, "output_tokens": 0, "estimated_cost_units": 0.0,
+    async def ai_usagedashboard(self, interaction: discord.Interaction):
+        executor = getattr(self.bot.ai, "executor", None)
+        telemetry = getattr(executor, "cost_telemetry", None)
+        routing = getattr(self.bot.ai, "routing_telemetry", None)
+        since = telemetry.month_start_utc() if telemetry else None
+        usage = telemetry.summary(since=since) if telemetry else {
+            "requests": 0, "input_tokens": 0, "output_tokens": 0,
         }
-        await interaction.response.send_message(
-            "📊 **AI Cost Dashboard**\n"
-            f"- Requests: **{summary['requests']}**\n"
-            f"- Luna / Terra / Sol: **{summary['luna']} / {summary['terra']} / {summary['sol']}**\n"
-            f"- Sol率: **{summary['sol_rate']}%**（目標 10〜20%）\n"
-            f"- Input / Output tokens: **{summary['input_tokens']} / {summary['output_tokens']}**\n"
-            f"- Relative cost units: **{summary['estimated_cost_units']}**\n"
-            "※ 起動後の直近最大1000件。金額ではなく相対コスト指標やで。",
-            ephemeral=True,
+        routes = routing.summary(since=since) if routing else {
+            "requests": 0, "by_model": {}, "jev_decisions": 0, "fallbacks": 0,
+            "low_confidence": 0, "jev_errors": 0, "avg_jev_latency_ms": 0.0,
+        }
+        total = routes["requests"]
+        counts = [
+            ("Luna", Config.FAST_MODEL, 45, 60),
+            ("Terra", Config.CHAT_MODEL, 25, 35),
+            ("Sol", Config.REASONING_MODEL, 10, 20),
+        ]
+        rows = []
+        statuses = []
+        for label, model, low, high in counts:
+            count = routes["by_model"].get(model, 0)
+            rate = round(count / total * 100, 1) if total else 0.0
+            status = "✅" if total and low <= rate <= high else ("⏳" if not total else "⚠️")
+            statuses.append(status)
+            rows.append((label, count, rate, low, high, status))
+
+        balance = "⏳ COLLECTING DATA" if not total else ("✅ HEALTHY" if all(s == "✅" for s in statuses) else "⚠️ WATCH")
+        sol_state = "⏳ COLLECTING DATA" if not total else ("✅ IN RANGE" if rows[2][5] == "✅" else "⚠️ OUT OF RANGE")
+        router_health = "✅ HEALTHY" if routes["jev_errors"] == 0 else "⚠️ CHECK"
+
+        embed = discord.Embed(
+            title="🌸 Akane AI Usage Dashboard",
+            description="当月のAI利用量とProduction Routerの稼働状況",
+            color=discord.Color.red(),
         )
+        embed.add_field(
+            name="📊 AI USAGE",
+            value=(
+                f"Requests **{usage['requests']:,}**\n"
+                f"Input **{usage['input_tokens']:,}** / Output **{usage['output_tokens']:,}** tokens\n"
+                f"Total **{usage['input_tokens'] + usage['output_tokens']:,}** tokens"
+            ), inline=False,
+        )
+        embed.add_field(
+            name="🧠 MODEL ROUTING",
+            value="\n".join(f"{label} **{count:,}** · **{rate}%**" for label, count, rate, _, _, _ in rows),
+            inline=False,
+        )
+        embed.add_field(
+            name="🎯 TARGET RANGE",
+            value="\n".join(f"{status} {label} **{rate}%** · target {low}–{high}%" for label, _, rate, low, high, status in rows),
+            inline=False,
+        )
+        embed.add_field(
+            name="⚙️ ROUTER HEALTH",
+            value=(
+                f"Jev decisions **{routes['jev_decisions']:,}**\n"
+                f"Fallbacks **{routes['fallbacks']:,}** · Low confidence **{routes['low_confidence']:,}**\n"
+                f"Jev errors **{routes['jev_errors']:,}** · Avg latency **{routes['avg_jev_latency_ms']:,.1f} ms**"
+            ), inline=False,
+        )
+        embed.add_field(
+            name="📌 STATUS",
+            value=(
+                f"Routing balance **{balance}**\n"
+                f"Sol usage **{sol_state}**\n"
+                f"Jev Router **{router_health}**"
+            ), inline=False,
+        )
+        embed.set_footer(text="集計期間: 毎月1日 00:00 JST〜現在 / runtime履歴 最大1000件")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # ==========================================================================
     # Config Log
