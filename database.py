@@ -358,6 +358,7 @@ class DatabaseManager:
             "log_ch",
             "starboard_ch",
             "auto_chat_ch",
+            "ticket_staff_role_id",
         }
 
         if col not in allowed_columns:
