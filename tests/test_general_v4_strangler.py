@@ -1,5 +1,5 @@
 from cogs.general import GeneralCog
-from cogs.general_commands import GeneralCog as LegacyGeneralCog
+from cogs.general_v4 import LegacyGeneralCog
 
 
 def test_strangler_cog_preserves_inherited_app_command_surface():
