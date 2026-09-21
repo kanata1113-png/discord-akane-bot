@@ -8,22 +8,15 @@ import discord
 from services.capability_discovery import DiscoveryCandidate
 from services.discovery_selection_executor import execute_discovery_selection
 from views.community_write_view import CommunityWriteEntryView
-from views.write_capability_view import (
-    WriteCapabilityEntryView,
-    write_capability_panel_text,
-)
+from views.parameterized_capability_view import ParameterizedCapabilityEntryView
+from views.write_capability_view import WriteCapabilityEntryView, write_capability_panel_text
 
 
-# Frozen Release D contract. Existing D regression tests intentionally assert
-# this exact set so later releases cannot silently rewrite historical scope.
-WRITE_CONFIRM_DISCOVERY_IDS = frozenset(
-    {"title_set", "memory_forget", "remind"}
-)
-
+# Frozen Release D contract.
+WRITE_CONFIRM_DISCOVERY_IDS = frozenset({"title_set", "memory_forget", "remind"})
 COMMUNITY_WRITE_DISCOVERY_IDS = frozenset({"event_create", "poll_create"})
-RELEASE_E_WRITE_CONFIRM_DISCOVERY_IDS = frozenset(
-    {*WRITE_CONFIRM_DISCOVERY_IDS, *COMMUNITY_WRITE_DISCOVERY_IDS}
-)
+RELEASE_E_WRITE_CONFIRM_DISCOVERY_IDS = frozenset({*WRITE_CONFIRM_DISCOVERY_IDS, *COMMUNITY_WRITE_DISCOVERY_IDS})
+PARAMETERIZED_DISCOVERY_IDS = ParameterizedCapabilityEntryView.SUPPORTED
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,10 +25,7 @@ class CandidateSelection:
     slash_command: str | None
 
 
-SelectionCallback = Callable[
-    [discord.Interaction, CandidateSelection],
-    Awaitable[bool],
-]
+SelectionCallback = Callable[[discord.Interaction, CandidateSelection], Awaitable[bool]]
 
 
 class CapabilityCandidateView(discord.ui.View):
@@ -102,7 +92,6 @@ class CapabilityCandidateView(discord.ui.View):
             candidate.capability_id,
             candidate.slash_command,
         )
-
         for item in self.children:
             item.disabled = True
         self.stop()
@@ -126,13 +115,34 @@ class CapabilityCandidateView(discord.ui.View):
             )
             return
 
+        # Release F parameter collection is the production default path.  A custom
+        # injected selection callback remains authoritative for tests/adapters and
+        # preserves the pre-F fail-closed contract.
+        if (
+            candidate.capability_id in PARAMETERIZED_DISCOVERY_IDS
+            and self._on_select is execute_discovery_selection
+        ):
+            view = ParameterizedCapabilityEntryView(
+                requester_id=self.requester_id,
+                capability_id=candidate.capability_id,
+                capability_name=candidate.name,
+            )
+            await interaction.response.edit_message(
+                content=(
+                    f"**{candidate.name}** を使うんやな。\n"
+                    "必要な条件だけ入力してもらって、実行前に確認するで。"
+                ),
+                view=view,
+            )
+            return
+
         if self._on_select is None:
             command = candidate.slash_command or candidate.name
             await interaction.response.edit_message(
                 content=(
                     f"選択: **{candidate.name}**\n"
-                    f"使うコマンドは `{command}` やで。"
-                    "\n※ まだ自動実行はしてへんで。"
+                    f"使うコマンドは `{command}` やで。\n"
+                    "※ まだ自動実行はしてへんで。"
                 ),
                 view=self,
             )
@@ -174,6 +184,6 @@ def candidate_panel_text(candidates: Sequence[DiscoveryCandidate]) -> str:
     return (
         "もしかして、次の機能を探してる？\n"
         f"候補は{count}件や。使いたいものを選んでな。"
-        "\n※ 対応済みの読み取り機能は選択後にそのまま実行、"
-        "書き込みは必ず確認を挟むで。"
+        "\n※ 対応済みの読み取り機能は選択後にそのまま実行。"
+        "条件が必要な機能は入力を案内し、書き込みは必ず確認を挟むで。"
     )
