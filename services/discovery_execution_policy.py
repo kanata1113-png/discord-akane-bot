@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from services.progression_capabilities import (
     ACHIEVEMENTS_CAPABILITY_ID,
+    LEADERBOARD_CAPABILITY_ID,
     LEVEL_CAPABILITY_ID,
     PROFILE_CAPABILITY_ID,
     WEEKLY_CAPABILITY_ID,
@@ -11,6 +12,7 @@ from services.progression_capabilities import (
 DIRECT_EXECUTION_CAPABILITY_IDS = frozenset(
     {
         LEVEL_CAPABILITY_ID,
+        LEADERBOARD_CAPABILITY_ID,
         WEEKLY_CAPABILITY_ID,
         PROFILE_CAPABILITY_ID,
         ACHIEVEMENTS_CAPABILITY_ID,
@@ -19,7 +21,7 @@ DIRECT_EXECUTION_CAPABILITY_IDS = frozenset(
 
 
 def can_direct_execute_discovery_capability(capability_id: str) -> bool:
-    """Return True only for the explicitly approved B2 direct-execution pilot.
+    """Return True only for explicitly approved direct-execution capabilities.
 
     ``rankings`` remains selection-only because it requires an additional
     category argument. ``fortune`` remains selection-only because first access
