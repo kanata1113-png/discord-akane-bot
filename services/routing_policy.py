@@ -7,6 +7,8 @@ from dataclasses import dataclass, replace
 
 from config import Config
 from services.context_builder import ContextBuilder, RoutingContext
+from services.cost_policy import CostPolicy
+from services.intent_gate import IntentGate
 from services.jev_model_router import JevModelRouter, JevRouteDecision
 from services.routing_metrics import RoutingMetric, RoutingTelemetry
 from services.token_budget import TokenBudgetPolicy
@@ -46,13 +48,15 @@ class RouteSelection:
     event_id: str | None = None
     history_messages: int | None = None
     followup_like: bool | None = None
+    intent_hint: str | None = None
+    estimated_cost_units: float | None = None
 
 
 class RoutingPolicy:
     """Single chat-routing policy with safe Legacy fallback.
 
-    v1.3 context hints and v1.6 adaptive token budgets are opt-in flags so the
-    v1.0 production behavior remains the default when this code is merged.
+    New behavioral features remain opt-in. Intent and relative-cost fields are
+    observational only and never alter route selection.
     """
 
     def __init__(
@@ -121,17 +125,20 @@ class RoutingPolicy:
         if not self.adaptive_budget_enabled:
             return selection
         budget = TokenBudgetPolicy.for_request(selection.route, content)
+        return replace(selection, max_output_tokens=budget.max_output_tokens, budget_reason=budget.reason)
+
+    @staticmethod
+    def _with_observations(selection: RouteSelection, content: str) -> RouteSelection:
         return replace(
             selection,
-            max_output_tokens=budget.max_output_tokens,
-            budget_reason=budget.reason,
+            intent_hint=IntentGate.classify(content),
+            estimated_cost_units=CostPolicy.estimate_units(
+                selection.model,
+                selection.max_output_tokens,
+            ),
         )
 
-    def _routing_input(
-        self,
-        content: str,
-        context: RoutingContext | None,
-    ) -> str:
+    def _routing_input(self, content: str, context: RoutingContext | None) -> str:
         if not self.context_hints_enabled or context is None:
             return content
         return f"{content}\n\n[{context.as_hint()}]"
@@ -153,10 +160,17 @@ class RoutingPolicy:
                 budget_reason=selection.budget_reason,
                 history_messages=selection.history_messages,
                 followup_like=selection.followup_like,
+                intent_hint=selection.intent_hint,
+                estimated_cost_units=selection.estimated_cost_units,
                 event_id=selection.event_id,
                 event=event,
             )
         )
+
+    def _finalize(self, selection: RouteSelection, content: str) -> RouteSelection:
+        selection = self._with_budget(selection, content)
+        selection = self._with_observations(selection, content)
+        return selection
 
     async def _observe_shadow(
         self,
@@ -178,6 +192,7 @@ class RoutingPolicy:
             history_messages=context.history_messages if context else None,
             followup_like=context.followup_like if context else None,
         )
+        selected = self._finalize(selected, content)
         self._emit(selected, event="shadow_observation")
 
     def _schedule_shadow(
@@ -205,14 +220,14 @@ class RoutingPolicy:
 
         if mode == "legacy":
             selected = replace(legacy, mode="legacy", **context_fields)
-            selected = self._with_budget(selected, content)
+            selected = self._finalize(selected, content)
             self._emit(selected)
             return selected
 
         if mode == "shadow":
             self._schedule_shadow(content, legacy, context)
             selected = replace(legacy, mode="shadow", **context_fields)
-            selected = self._with_budget(selected, content)
+            selected = self._finalize(selected, content)
             self._emit(selected)
             return selected
 
@@ -224,7 +239,7 @@ class RoutingPolicy:
                 fallback_reason="not_configured",
                 **context_fields,
             )
-            selected = self._with_budget(selected, content)
+            selected = self._finalize(selected, content)
             self._emit(selected)
             return selected
 
@@ -240,7 +255,7 @@ class RoutingPolicy:
                 fallback_reason=self.fallback_reason(decision),
                 **context_fields,
             )
-            selected = self._with_budget(selected, content)
+            selected = self._finalize(selected, content)
             self._emit(selected)
             return selected
 
@@ -258,6 +273,6 @@ class RoutingPolicy:
             latency_ms=decision.latency_ms,
             **context_fields,
         )
-        selected = self._with_budget(selected, content)
+        selected = self._finalize(selected, content)
         self._emit(selected)
         return selected
