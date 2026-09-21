@@ -17,7 +17,12 @@ class CapabilityRisk(str, Enum):
 
 @dataclass(frozen=True, slots=True)
 class CapabilitySpec:
-    """Stable metadata for one user-addressable bot capability."""
+    """Stable metadata for one user-addressable bot capability.
+
+    ``risk`` describes authorization / confirmation policy. External model or
+    service spend is tracked separately through ``incurs_external_cost`` so a
+    non-destructive AI capability does not masquerade as a write/admin risk.
+    """
 
     capability_id: str
     name: str
@@ -27,6 +32,7 @@ class CapabilitySpec:
     slash_command: str | None = None
     requires_confirmation: bool = False
     discoverable: bool = True
+    incurs_external_cost: bool = False
     tags: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:

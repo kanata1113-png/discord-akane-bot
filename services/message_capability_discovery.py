@@ -2,29 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from services.capability_catalog import DISCOVERY_RELEASE_C_SPECS
 from services.capability_discovery import (
     DiscoveryCandidate,
     discover_locally,
 )
 from services.jev_discovery_reranker import DiscoveryReranker
-from services.progression_capabilities import (
-    ACHIEVEMENTS_SPEC,
-    FORTUNE_SPEC,
-    LEVEL_SPEC,
-    PROFILE_SPEC,
-    RANKINGS_SPEC,
-    WEEKLY_SPEC,
-)
 
 
-DISCOVERY_SPECS = (
-    LEVEL_SPEC,
-    WEEKLY_SPEC,
-    RANKINGS_SPEC,
-    PROFILE_SPEC,
-    ACHIEVEMENTS_SPEC,
-    FORTUNE_SPEC,
-)
+DISCOVERY_SPECS = DISCOVERY_RELEASE_C_SPECS
 
 
 @dataclass(frozen=True, slots=True)
