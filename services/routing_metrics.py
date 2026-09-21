@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from collections import deque
+from datetime import datetime, timezone
+from threading import Lock
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -44,11 +47,41 @@ class RoutingMetric:
 class RoutingTelemetry:
     """Privacy-minimal structured telemetry for routing behavior."""
 
+    def __init__(self, max_events: int = 1000) -> None:
+        self._events: deque[dict[str, Any]] = deque(maxlen=max_events)
+        self._lock = Lock()
+
+    def snapshot(self, *, since: datetime | None = None) -> list[dict[str, Any]]:
+        with self._lock:
+            events = list(self._events)
+        if since is None:
+            return events
+        return [e for e in events if datetime.fromisoformat(e['created_at']) >= since]
+
+    def summary(self, *, since: datetime | None = None) -> dict[str, Any]:
+        events = [e for e in self.snapshot(since=since) if e.get('event') == 'routing_decision']
+        total = len(events)
+        by_model: dict[str, int] = {}
+        for event in events:
+            model = event.get('model')
+            if model:
+                by_model[model] = by_model.get(model, 0) + 1
+        jev = sum(1 for e in events if e.get('source') == 'jev')
+        fallback = sum(1 for e in events if e.get('fallback_reason'))
+        low_conf = sum(1 for e in events if str(e.get('fallback_reason', '')).startswith('low_confidence'))
+        errors = sum(1 for e in events if e.get('fallback_reason') and not str(e.get('fallback_reason')).startswith('low_confidence'))
+        latencies = [int(e['latency_ms']) for e in events if e.get('latency_ms') is not None]
+        return {'requests': total, 'by_model': by_model, 'jev_decisions': jev, 'fallbacks': fallback, 'low_confidence': low_conf, 'jev_errors': errors, 'avg_jev_latency_ms': round(sum(latencies) / len(latencies), 1) if latencies else 0.0}
+
     @staticmethod
     def new_event_id() -> str:
         return uuid.uuid4().hex[:12]
 
     def emit(self, metric: RoutingMetric) -> None:
+        payload = metric.to_dict()
+        payload['created_at'] = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            self._events.append(payload)
         logger.info(
             "ROUTING_METRIC %s",
             json.dumps(
