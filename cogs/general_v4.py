@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import logging
 
 import discord
@@ -8,6 +9,12 @@ from discord import app_commands
 
 from config import Config
 from cogs.general_commands import GeneralCog as LegacyGeneralCog
+from services.ai_capabilities import (
+    build_ai_capability_dispatcher,
+    dispatch_define,
+    dispatch_summary,
+    dispatch_translate,
+)
 from services.user_capabilities import (
     build_user_capability_dispatcher,
     dispatch_memory_forget,
@@ -34,6 +41,166 @@ class GeneralCog(LegacyGeneralCog):
         self._user_capability_dispatcher = build_user_capability_dispatcher(
             getattr(bot, "db", None)
         )
+        self._ai_capability_dispatcher = build_ai_capability_dispatcher(
+            getattr(bot, "ai", None)
+        )
+
+    @app_commands.command(
+        name="translate",
+        description="AI翻訳"
+    )
+    async def translate(
+        self,
+        interaction: discord.Interaction,
+        language: str,
+        text: str
+    ):
+        await interaction.response.defer()
+
+        try:
+            result = await dispatch_translate(
+                self._ai_capability_dispatcher,
+                user_id=interaction.user.id,
+                guild_id=(interaction.guild.id if interaction.guild else None),
+                channel_id=interaction.channel_id,
+                text=text,
+                language=language,
+            )
+            translated = result.value["text"]
+
+            if not translated or not translated.strip():
+                translated = Config.ERROR_MSG
+
+            if len(translated) > 4000:
+                file = discord.File(
+                    io.BytesIO(translated.encode("utf-8")),
+                    filename="trans.txt"
+                )
+                await interaction.followup.send(
+                    "長すぎるからファイルにするな！",
+                    file=file
+                )
+            else:
+                await interaction.followup.send(
+                    embed=discord.Embed(
+                        title=f"翻訳 ({language})",
+                        description=translated,
+                        color=discord.Color.blue()
+                    )
+                )
+        except Exception as e:
+            logger.exception(f"/translate failed: {e}")
+            await interaction.followup.send(
+                "翻訳中にエラーが起きたで。",
+                ephemeral=True
+            )
+
+    @app_commands.command(
+        name="define",
+        description="AI辞書"
+    )
+    async def define(
+        self,
+        interaction: discord.Interaction,
+        word: str,
+        wiki_mode: bool = False
+    ):
+        await interaction.response.defer()
+
+        try:
+            result = await dispatch_define(
+                self._ai_capability_dispatcher,
+                user_id=interaction.user.id,
+                guild_id=(interaction.guild.id if interaction.guild else None),
+                channel_id=interaction.channel_id,
+                word=word,
+                wiki_mode=wiki_mode,
+            )
+            definition = result.value["text"]
+
+            if not definition or not definition.strip():
+                await interaction.followup.send(
+                    Config.ERROR_MSG,
+                    ephemeral=True
+                )
+                return
+
+            if len(definition) > 4000:
+                file = discord.File(
+                    io.BytesIO(definition.encode("utf-8")),
+                    filename="define.txt"
+                )
+                await interaction.followup.send(
+                    "長すぎるからファイルにするな！",
+                    file=file
+                )
+                return
+
+            title = f"📖 辞書: {word}" + (" (Wiki Mode)" if wiki_mode else "")
+            await interaction.followup.send(
+                embed=discord.Embed(
+                    title=title,
+                    description=definition,
+                    color=discord.Color.green()
+                )
+            )
+        except Exception as e:
+            logger.exception(f"/define failed: {e}")
+            await interaction.followup.send(
+                "辞書処理中にエラーが起きたで。",
+                ephemeral=True
+            )
+
+    @app_commands.command(
+        name="summary",
+        description="自分の発言要約"
+    )
+    async def summary(
+        self,
+        interaction: discord.Interaction,
+        back: int
+    ):
+        back = max(1, min(back, 20))
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            messages = [
+                message.content
+                async for message in interaction.channel.history(limit=100)
+                if message.author == interaction.user
+            ][:back]
+
+            if not messages:
+                await interaction.followup.send(
+                    "発言が見つからんかったわ。",
+                    ephemeral=True
+                )
+                return
+
+            messages.reverse()
+            result = await dispatch_summary(
+                self._ai_capability_dispatcher,
+                user_id=interaction.user.id,
+                guild_id=(interaction.guild.id if interaction.guild else None),
+                channel_id=interaction.channel_id,
+                messages=messages,
+            )
+            summary_text = result.value["text"]
+
+            await interaction.followup.send(
+                embed=discord.Embed(
+                    title="📝 発言要約",
+                    description=(summary_text or Config.ERROR_MSG),
+                    color=discord.Color.orange()
+                ),
+                ephemeral=True
+            )
+        except Exception as e:
+            logger.exception(f"/summary failed: {e}")
+            await interaction.followup.send(
+                "要約中にエラーが起きたで。",
+                ephemeral=True
+            )
 
     @app_commands.command(
         name="remind",
@@ -78,7 +245,6 @@ class GeneralCog(LegacyGeneralCog):
                 channel_id=interaction.channel.id,
                 minutes=minutes,
                 message=message,
-                # A direct slash command is already an explicit user action.
                 confirmed=True,
             )
             await interaction.response.send_message(
@@ -160,7 +326,6 @@ class GeneralCog(LegacyGeneralCog):
                 guild_id=interaction.guild.id,
                 channel_id=interaction.channel.id,
                 all_channels=all_channels,
-                # Direct slash invocation preserves the legacy explicit action.
                 confirmed=True,
             )
             deleted = result.value["deleted"]
@@ -250,8 +415,6 @@ class GeneralCog(LegacyGeneralCog):
                 guild_id=interaction.guild.id,
                 channel_id=interaction.channel_id,
                 title_key=title_key,
-                # Direct slash invocation is explicit; natural-language paths
-                # must separately satisfy the confirmation contract.
                 confirmed=True,
             )
 
