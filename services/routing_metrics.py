@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -22,6 +23,10 @@ class RoutingMetric:
     model: str | None = None
     reasoning_effort: str | None = None
     max_output_tokens: int | None = None
+    budget_reason: str | None = None
+    history_messages: int | None = None
+    followup_like: bool | None = None
+    event_id: str | None = None
     event: str = "routing_decision"
 
     def to_dict(self) -> dict[str, Any]:
@@ -33,11 +38,11 @@ class RoutingMetric:
 
 
 class RoutingTelemetry:
-    """Privacy-minimal structured telemetry for routing behavior.
+    """Privacy-minimal structured telemetry for routing behavior."""
 
-    Message content, usernames, Discord IDs, guild IDs, channel IDs and
-    conversation history are intentionally excluded.
-    """
+    @staticmethod
+    def new_event_id() -> str:
+        return uuid.uuid4().hex[:12]
 
     def emit(self, metric: RoutingMetric) -> None:
         logger.info(
