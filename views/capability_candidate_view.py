@@ -7,7 +7,10 @@ import discord
 
 from services.capability_discovery import DiscoveryCandidate
 from services.discovery_selection_executor import execute_discovery_selection
-from views.community_write_view import CommunityWriteEntryView
+from views.community_write_view import (
+    CommunityWriteEntryView,
+    EventTypeChoiceView,
+)
 from views.parameterized_capability_view import ParameterizedCapabilityEntryView
 from views.write_capability_view import WriteCapabilityEntryView, write_capability_panel_text
 
@@ -115,7 +118,7 @@ class CapabilityCandidateView(discord.ui.View):
             )
             return
 
-        # Release F parameter collection is the production default path.  A custom
+        # Release F parameter collection is the production default path. A custom
         # injected selection callback remains authoritative for tests/adapters and
         # preserves the pre-F fail-closed contract.
         if (
@@ -129,8 +132,8 @@ class CapabilityCandidateView(discord.ui.View):
             )
             await interaction.response.edit_message(
                 content=(
-                    f"**{candidate.name}** を使うんやな。\n"
-                    "必要な条件だけ入力してもらって、実行前に確認するで。"
+                    f"✨ **{candidate.name}** やな！\n"
+                    "必要な条件だけ聞くから、下のボタンから進んでな。"
                 ),
                 view=view,
             )
@@ -171,8 +174,8 @@ class CapabilityCandidateView(discord.ui.View):
             item.disabled = True
         await interaction.response.edit_message(
             content=(
-                "キャンセル済みやで。\n"
-                "このメッセージの処理はここで終了したで。"
+                "キャンセルしたで👌\n"
+                "何も変更してへんから安心してな。"
             ),
             view=self,
         )
@@ -181,9 +184,69 @@ class CapabilityCandidateView(discord.ui.View):
 
 def candidate_panel_text(candidates: Sequence[DiscoveryCandidate]) -> str:
     count = min(len(tuple(candidates)), 4)
+    if count == 1:
+        return (
+            "🔎 もしかして、探してる機能はこれやろか？\n"
+            "下のボタンを押したら操作を始めるで。必要な確認は途中でちゃんと聞くから安心してな👌\n"
+            "違ってたらキャンセルでも大丈夫やで！"
+        )
     return (
-        "もしかして、次の機能を探してる？\n"
-        f"候補は{count}件や。使いたいものを選んでな。"
-        "\n※ 対応済みの読み取り機能は選択後にそのまま実行。"
-        "条件が必要な機能は入力を案内し、書き込みは必ず確認を挟むで。"
+        "🔎 もしかして、探してる機能はこのへんやろか？\n"
+        f"候補を{count}件見つけたで。使いたいものを下から選んでな👇\n"
+        "必要な確認は途中でちゃんと聞くで。違ってたらキャンセルでも大丈夫や！"
+    )
+
+
+def single_candidate_handoff(
+    candidate: DiscoveryCandidate,
+    *,
+    requester_id: int,
+) -> tuple[str, discord.ui.View]:
+    """Skip the redundant candidate-selection layer for one exact candidate.
+
+    This does not skip the capability's own confirmation boundary. It only moves
+    the user directly to the operation-specific entry UI.
+    """
+
+    if candidate.capability_id == "event_create":
+        return (
+            "📅 イベント作成やな！開催形式を選んでな👇\n"
+            "最後に内容を確認してから作成するから、ここで押しても急に登録はされへんで👌",
+            EventTypeChoiceView(requester_id=requester_id),
+        )
+
+    if candidate.capability_id in RELEASE_E_WRITE_CONFIRM_DISCOVERY_IDS:
+        if candidate.capability_id in COMMUNITY_WRITE_DISCOVERY_IDS:
+            view: discord.ui.View = CommunityWriteEntryView(
+                requester_id=requester_id,
+                capability_id=candidate.capability_id,
+                capability_name=candidate.name,
+            )
+        else:
+            view = WriteCapabilityEntryView(
+                requester_id=requester_id,
+                capability_id=candidate.capability_id,
+                capability_name=candidate.name,
+            )
+        return (
+            f"✨ **{candidate.name}** やな！\n"
+            "下のボタンを押したら操作を始めるで。最終確認までは何も変更されへんから安心してな👌",
+            view,
+        )
+
+    if candidate.capability_id in PARAMETERIZED_DISCOVERY_IDS:
+        return (
+            f"✨ **{candidate.name}** やな！\n"
+            "必要な条件だけ聞くから、下のボタンから進んでな👇",
+            ParameterizedCapabilityEntryView(
+                requester_id=requester_id,
+                capability_id=candidate.capability_id,
+                capability_name=candidate.name,
+            ),
+        )
+
+    return (
+        "🔎 探してる機能、たぶんこれやと思うで！\n"
+        "下のボタンを押したら始めるで。違ってたらキャンセルしてな👌",
+        CapabilityCandidateView((candidate,), requester_id=requester_id),
     )
