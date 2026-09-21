@@ -24,7 +24,7 @@ async def _invoke_event(
     description: str | None,
 ) -> None:
     cog = await _general_cog(interaction)
-    await cog.event_create.callback(
+    await cog.event.callback(
         cog,
         interaction,
         name,
