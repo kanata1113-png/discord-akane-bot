@@ -59,5 +59,5 @@ async def test_no_local_candidate_preserves_normal_chat_fallback():
     )
 
     assert result.should_show_panel is False
-    assert result.source == "no_local_candidate"
+    assert result.source == "gate_rejected"
     assert reranker.calls == []
