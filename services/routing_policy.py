@@ -117,15 +117,32 @@ class RoutingPolicy:
 
     @classmethod
     def _previous_user_metadata(cls, history) -> tuple[str | None, str | None]:
+        """Find the nearest non-follow-up user turn as the continuity anchor.
+
+        This keeps chains such as "compare X" -> "tell me more" -> "what is
+        the key point?" attached to the original analytical turn without ever
+        sending prior message bodies to Jev.
+        """
+        latest_valid: str | None = None
         for item in reversed(list(history or [])):
             if item.get("role") != "user":
                 continue
             body = item.get("content")
             if not isinstance(body, str) or not body.strip():
                 continue
+            if latest_valid is None:
+                latest_valid = body
+            if ContextBuilder.looks_like_followup(body, has_history=True):
+                continue
             return (
                 cls.normalize_legacy_route(cls.legacy_route(body)),
                 IntentGate.classify(body),
+            )
+
+        if latest_valid is not None:
+            return (
+                cls.normalize_legacy_route(cls.legacy_route(latest_valid)),
+                IntentGate.classify(latest_valid),
             )
         return None, None
 
@@ -136,6 +153,48 @@ class RoutingPolicy:
         if not decision.accepted:
             return "low_confidence"
         return "unknown"
+
+    @classmethod
+    def _continuity_floor(
+        cls,
+        legacy: RouteSelection,
+        context: RoutingContext,
+        decision: JevRouteDecision,
+    ) -> RouteSelection | None:
+        """Return a conservative route floor for low-confidence follow-ups.
+
+        The floor only applies when:
+        - the current message is a true follow-up,
+        - Jev rejected only because confidence was low (not an API error),
+        - current Legacy routing would drop to normal-chat, and
+        - the recent conversation anchor was reasoning/deep-reasoning.
+
+        High-confidence Jev decisions and transport/API failures remain
+        governed by the existing policy.
+        """
+        if not context.followup_like:
+            return None
+        if decision.error or decision.accepted:
+            return None
+        if cls.normalize_legacy_route(legacy.route) != "normal-chat":
+            return None
+        if context.previous_route not in {"reasoning", "deep-reasoning"}:
+            return None
+
+        tier = cls.tier_for_route(context.previous_route)
+        return RouteSelection(
+            model=tier.model,
+            reasoning_effort=tier.reasoning_effort,
+            route=context.previous_route,
+            max_output_tokens=tier.max_output_tokens,
+            mode="production",
+            source="legacy",
+            legacy_route=legacy.route,
+            jev_route=decision.route,
+            confidence=decision.confidence,
+            latency_ms=decision.latency_ms,
+            fallback_reason="low_confidence_continuity_floor",
+        )
 
     def _with_budget(self, selection: RouteSelection, content: str) -> RouteSelection:
         if not self.adaptive_budget_enabled:
@@ -278,16 +337,20 @@ class RoutingPolicy:
 
         decision = await self.jev_router.route(self._routing_input(content, context))
         if not decision.accepted or decision.route is None:
-            selected = replace(
-                legacy,
-                mode="production",
-                source="legacy",
-                jev_route=decision.route,
-                confidence=decision.confidence,
-                latency_ms=decision.latency_ms,
-                fallback_reason=self.fallback_reason(decision),
-                **context_fields,
-            )
+            floor = self._continuity_floor(legacy, context, decision)
+            if floor is not None:
+                selected = replace(floor, **context_fields)
+            else:
+                selected = replace(
+                    legacy,
+                    mode="production",
+                    source="legacy",
+                    jev_route=decision.route,
+                    confidence=decision.confidence,
+                    latency_ms=decision.latency_ms,
+                    fallback_reason=self.fallback_reason(decision),
+                    **context_fields,
+                )
             selected = self._finalize(selected, content)
             self._emit(selected)
             return selected

@@ -28,7 +28,7 @@ class RoutingContext:
 
     Prior message bodies are never included in the hint. When the current
     message looks like a true follow-up, locally-derived metadata about the
-    previous user turn can be attached to preserve routing continuity.
+    recent conversation anchor can be attached to preserve routing continuity.
     """
 
     history_messages: int
@@ -54,6 +54,13 @@ class RoutingContext:
 
 class ContextBuilder:
     @staticmethod
+    def looks_like_followup(content: str, *, has_history: bool = True) -> bool:
+        if not has_history:
+            return False
+        text = (content or "").strip().lower()
+        return any(marker.lower() in text for marker in FOLLOWUP_MARKERS)
+
+    @staticmethod
     def build(
         content: str,
         history: Iterable[Mapping[str, object]] | None,
@@ -68,9 +75,9 @@ class ContextBuilder:
             if role in {"user", "assistant"} and isinstance(body, str) and body:
                 usable.append(role)
 
-        text = (content or "").strip().lower()
-        followup_like = bool(usable) and any(
-            marker.lower() in text for marker in FOLLOWUP_MARKERS
+        followup_like = ContextBuilder.looks_like_followup(
+            content,
+            has_history=bool(usable),
         )
 
         return RoutingContext(

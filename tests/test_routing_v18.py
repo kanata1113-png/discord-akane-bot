@@ -36,6 +36,55 @@ class FakeRouter:
         )
 
 
+class LowConfidenceNormalRouter(FakeRouter):
+    async def route(self, content):
+        self.seen = content
+        return JevRouteDecision(
+            route="normal-chat",
+            confidence=0.45,
+            probabilities={"normal-chat": 0.45},
+            latency_ms=100,
+            accepted=False,
+            error=None,
+        )
+
+
+class AcceptedNormalRouter(FakeRouter):
+    async def route(self, content):
+        self.seen = content
+        return JevRouteDecision(
+            route="normal-chat",
+            confidence=0.96,
+            probabilities={"normal-chat": 0.96},
+            latency_ms=100,
+            accepted=True,
+            error=None,
+        )
+
+
+class TimeoutRouter(FakeRouter):
+    async def route(self, content):
+        self.seen = content
+        return JevRouteDecision(
+            route=None,
+            confidence=None,
+            probabilities={},
+            latency_ms=1500,
+            accepted=False,
+            error="timeout",
+        )
+
+
+def analytical_history():
+    return [
+        {
+            "role": "user",
+            "content": "SNSの実名制のメリットとデメリットを比較して",
+        },
+        {"role": "assistant", "content": "answer"},
+    ]
+
+
 def test_context_builder_never_returns_prior_message_content():
     history = [
         {"role": "user", "content": "SECRET PRIOR USER TEXT"},
@@ -65,6 +114,16 @@ def test_standalone_compare_is_not_misclassified_as_followup():
     assert context.followup_like is False
     assert context.previous_route is None
     assert context.previous_intent is None
+
+
+def test_chained_followup_uses_nearest_non_followup_anchor():
+    history = analytical_history() + [
+        {"role": "user", "content": "それをもう少し詳しく"},
+        {"role": "assistant", "content": "expanded answer"},
+    ]
+    route, intent = RoutingPolicy._previous_user_metadata(history)
+    assert route == "reasoning"
+    assert intent == "analysis"
 
 
 @pytest.mark.asyncio
@@ -110,12 +169,7 @@ async def test_non_followup_omits_previous_route_and_intent(monkeypatch):
     policy = RoutingPolicy(router)
     selection = await policy.select(
         "今日は何してた？",
-        history=[
-            {
-                "role": "user",
-                "content": "SNSの実名制のメリットとデメリットを比較して",
-            }
-        ],
+        history=analytical_history(),
     )
 
     assert selection.followup_like is False
@@ -123,6 +177,55 @@ async def test_non_followup_omits_previous_route_and_intent(monkeypatch):
     assert selection.previous_intent is None
     assert "previous_route:" not in router.seen
     assert "previous_intent:" not in router.seen
+
+
+@pytest.mark.asyncio
+async def test_low_confidence_followup_uses_reasoning_continuity_floor(monkeypatch):
+    monkeypatch.setenv("JEV_ROUTER_CONTEXT_HINTS", "true")
+    telemetry = CapturingTelemetry()
+    policy = RoutingPolicy(LowConfidenceNormalRouter(), telemetry=telemetry)
+
+    selection = await policy.select(
+        "それをもう少し詳しく",
+        history=analytical_history(),
+    )
+
+    assert selection.route == "reasoning"
+    assert selection.model == Config.REASONING_MODEL
+    assert selection.source == "legacy"
+    assert selection.previous_route == "reasoning"
+    assert selection.fallback_reason == "low_confidence_continuity_floor"
+    assert telemetry.metrics[0].selected_route == "reasoning"
+
+
+@pytest.mark.asyncio
+async def test_continuity_floor_does_not_override_high_confidence_jev(monkeypatch):
+    monkeypatch.setenv("JEV_ROUTER_CONTEXT_HINTS", "true")
+    policy = RoutingPolicy(AcceptedNormalRouter())
+
+    selection = await policy.select(
+        "それをもう少し詳しく",
+        history=analytical_history(),
+    )
+
+    assert selection.route == "normal-chat"
+    assert selection.source == "jev"
+    assert selection.fallback_reason is None
+
+
+@pytest.mark.asyncio
+async def test_continuity_floor_does_not_mask_router_errors(monkeypatch):
+    monkeypatch.setenv("JEV_ROUTER_CONTEXT_HINTS", "true")
+    policy = RoutingPolicy(TimeoutRouter())
+
+    selection = await policy.select(
+        "それをもう少し詳しく",
+        history=analytical_history(),
+    )
+
+    assert selection.route == "normal-chat"
+    assert selection.source == "legacy"
+    assert selection.fallback_reason == "timeout"
 
 
 @pytest.mark.asyncio
@@ -164,12 +267,7 @@ async def test_continuity_metadata_is_visible_in_telemetry(monkeypatch):
     policy = RoutingPolicy(FakeRouter(), telemetry=telemetry)
     await policy.select(
         "それをもう少し詳しく",
-        history=[
-            {
-                "role": "user",
-                "content": "SNSの実名制のメリットとデメリットを比較して",
-            }
-        ],
+        history=analytical_history(),
     )
 
     payload = telemetry.metrics[0].to_dict()
