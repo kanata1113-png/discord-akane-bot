@@ -23,12 +23,13 @@ def test_panel_caps_buttons_at_four_and_contains_no_dispatcher():
     )
     view = CapabilityCandidateView(candidates, requester_id=123)
 
-    assert len(view.children) == 4
+    assert len(view.children) == 5
     assert [item.custom_id for item in view.children] == [
         "cap_discovery:cap0",
         "cap_discovery:cap1",
         "cap_discovery:cap2",
         "cap_discovery:cap3",
+        "cap_discovery:cancel",
     ]
     assert not hasattr(view, "dispatcher")
     assert not hasattr(view, "handler")
@@ -49,3 +50,22 @@ def test_buttons_are_existing_capability_metadata_only():
     assert view.selection is None
     assert view.children[0].label == "今週のXPランキング"
     assert view.children[0].custom_id == "cap_discovery:weekly"
+
+
+def test_panel_always_includes_cancel_button():
+    weekly = candidate("weekly", "今週のXPランキング", "/weekly")
+    view = CapabilityCandidateView((weekly,), requester_id=123)
+
+    cancel = view.children[-1]
+    assert cancel.label == "キャンセル"
+    assert cancel.custom_id == "cap_discovery:cancel"
+    assert cancel.style.name == "danger"
+
+
+def test_cancel_does_not_create_capability_selection():
+    weekly = candidate("weekly", "今週のXPランキング", "/weekly")
+    view = CapabilityCandidateView((weekly,), requester_id=123)
+
+    assert view.selection is None
+    assert not hasattr(view, "dispatcher")
+    assert not hasattr(view, "handler")
