@@ -28,7 +28,7 @@ class ExecuteConfirmView(RequesterOnlyView):
             self.cancelled = True
             self.disable_all()
             self.stop()
-            await interaction.response.edit_message(content="キャンセル済みやで。実行はしてへんで。", view=self)
+            await interaction.response.edit_message(content="👌 キャンセルしたで。実行はしてへんで。", view=self)
 
         confirm.callback = confirm_callback
         cancel.callback = cancel_callback
@@ -37,7 +37,7 @@ class ExecuteConfirmView(RequesterOnlyView):
 
 
 class SearchModal(discord.ui.Modal, title="メッセージ検索"):
-    keyword = discord.ui.TextInput(label="検索キーワード", min_length=1, max_length=100)
+    keyword = discord.ui.TextInput(label="検索キーワード", placeholder="例: 誹謗中傷", min_length=1, max_length=100)
     days = discord.ui.TextInput(label="何日前まで？（任意）", placeholder="例: 7", required=False, max_length=4)
 
     def __init__(self, *, requester_id: int) -> None:
@@ -50,10 +50,10 @@ class SearchModal(discord.ui.Modal, title="メッセージ検索"):
         try:
             days = int(days_text) if days_text else None
         except ValueError:
-            await interaction.response.send_message("日数は数字で入力してな。", ephemeral=True)
+            await interaction.response.send_message("🔢 日数は `7` みたいに数字で入力してな。", ephemeral=True)
             return
         if days is not None and (days < 1 or days > 3650):
-            await interaction.response.send_message("日数は1〜3650日の範囲で入力してな。", ephemeral=True)
+            await interaction.response.send_message("📅 日数は1〜3650日の範囲で入力してな。", ephemeral=True)
             return
 
         async def execute(confirm_interaction: discord.Interaction) -> None:
@@ -62,7 +62,7 @@ class SearchModal(discord.ui.Modal, title="メッセージ検索"):
 
         period = f"過去{days}日" if days else "期間指定なし"
         await interaction.response.send_message(
-            f"現在のチャンネルから **{keyword}** を検索するで。範囲: {period}",
+            f"🔎 現在のチャンネルから **{keyword}** を検索するで。範囲: {period}",
             view=ExecuteConfirmView(requester_id=self.requester_id, on_confirm=execute, confirm_label="検索する"),
             ephemeral=True,
         )
@@ -85,7 +85,7 @@ class TranslateModal(discord.ui.Modal, title="AI翻訳"):
             await cog.translate.callback(cog, confirm_interaction, language, text)
 
         await interaction.response.send_message(
-            f"**{language}** へAI翻訳するで。外部AI処理は確定後にだけ実行するで。",
+            f"🌐 **{language}** へAI翻訳するで。外部AI処理は確定後にだけ実行するで。",
             view=ExecuteConfirmView(requester_id=self.requester_id, on_confirm=execute, confirm_label="AI翻訳を実行"),
             ephemeral=True,
         )
@@ -112,7 +112,7 @@ class DefineModal(discord.ui.Modal, title="AI辞書"):
             await cog.define.callback(cog, confirm_interaction, word, wiki_mode)
 
         await interaction.response.send_message(
-            f"**{word}** をAI辞書で調べるで。Wiki Mode: {'ON' if wiki_mode else 'OFF'}",
+            f"📚 **{word}** をAI辞書で調べるで。Wiki Mode: {'ON' if wiki_mode else 'OFF'}",
             view=ExecuteConfirmView(requester_id=self.requester_id, on_confirm=execute, confirm_label="AI辞書を実行"),
             ephemeral=True,
         )
@@ -130,7 +130,7 @@ class SummaryCountView(RequesterOnlyView):
                     await cog.summary.callback(cog, confirm_interaction, selected)
 
                 await interaction.response.edit_message(
-                    content=f"自分の直近 **{selected}件** の発言をAI要約するで。",
+                    content=f"📝 自分の直近 **{selected}件** の発言をAI要約するで。",
                     view=ExecuteConfirmView(requester_id=self.requester_id, on_confirm=execute, confirm_label="AI要約を実行"),
                 )
                 self.stop()
@@ -173,44 +173,51 @@ class ParameterizedCapabilityEntryView(RequesterOnlyView):
         cancel = discord.ui.Button(label="キャンセル", style=discord.ButtonStyle.secondary, custom_id="param_entry:cancel")
 
         async def start_callback(interaction: discord.Interaction) -> None:
-            self.disable_all()
-            self.stop()
-            cid = self.capability_id
-            if cid == "message_search":
-                await interaction.response.send_modal(SearchModal(requester_id=self.requester_id))
-                return
-            if cid == "translate":
-                await interaction.response.send_modal(TranslateModal(requester_id=self.requester_id))
-                return
-            if cid == "define":
-                await interaction.response.send_modal(DefineModal(requester_id=self.requester_id))
-                return
-            if cid == "summary":
-                await interaction.response.edit_message(content="要約する発言数を選んでな。", view=SummaryCountView(requester_id=self.requester_id))
-                return
-            if cid == "rankings":
-                await interaction.response.edit_message(content="ランキングの種類を選んでな。", view=RankingsView(requester_id=self.requester_id))
-                return
-            if cid in {"fortune", "titles"}:
-                async def execute(confirm_interaction: discord.Interaction) -> None:
-                    cog = await _general_cog(confirm_interaction)
-                    command = cog.fortune if cid == "fortune" else cog.titles
-                    await command.callback(cog, confirm_interaction)
-                note = "初回表示では今日の運勢を保存するで。" if cid == "fortune" else "称号の解除状況を更新してから表示するで。"
-                await interaction.response.edit_message(
-                    content=f"**{self.capability_name}** を実行する？\n{note}",
-                    view=ExecuteConfirmView(requester_id=self.requester_id, on_confirm=execute),
-                )
-                return
-            await interaction.response.send_message("この機能は引数収集フロー対象外やで。", ephemeral=True)
+            await self.begin(interaction)
 
         async def cancel_callback(interaction: discord.Interaction) -> None:
             self.cancelled = True
             self.disable_all()
             self.stop()
-            await interaction.response.edit_message(content="キャンセル済みやで。実行はしてへんで。", view=self)
+            await interaction.response.edit_message(content="👌 キャンセルしたで。実行はしてへんで。", view=self)
 
         start.callback = start_callback
         cancel.callback = cancel_callback
         self.add_item(start)
         self.add_item(cancel)
+
+    async def begin(self, interaction: discord.Interaction) -> None:
+        """Start argument collection immediately after discovery selection."""
+
+        self.disable_all()
+        self.stop()
+        cid = self.capability_id
+
+        if cid == "message_search":
+            await interaction.response.send_modal(SearchModal(requester_id=self.requester_id))
+            return
+        if cid == "translate":
+            await interaction.response.send_modal(TranslateModal(requester_id=self.requester_id))
+            return
+        if cid == "define":
+            await interaction.response.send_modal(DefineModal(requester_id=self.requester_id))
+            return
+        if cid == "summary":
+            await interaction.response.edit_message(content="📝 要約する発言数を選んでな。", view=SummaryCountView(requester_id=self.requester_id))
+            return
+        if cid == "rankings":
+            await interaction.response.edit_message(content="🏆 ランキングの種類を選んでな。", view=RankingsView(requester_id=self.requester_id))
+            return
+        if cid in {"fortune", "titles"}:
+            async def execute(confirm_interaction: discord.Interaction) -> None:
+                cog = await _general_cog(confirm_interaction)
+                command = cog.fortune if cid == "fortune" else cog.titles
+                await command.callback(cog, confirm_interaction)
+
+            note = "初回表示では今日の運勢を保存するで。" if cid == "fortune" else "称号の解除状況を更新してから表示するで。"
+            await interaction.response.edit_message(
+                content=f"✨ **{self.capability_name}** を実行する？\n{note}",
+                view=ExecuteConfirmView(requester_id=self.requester_id, on_confirm=execute),
+            )
+            return
+        await interaction.response.send_message("この機能は引数収集フロー対象外やで。", ephemeral=True)
