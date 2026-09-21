@@ -150,6 +150,7 @@ class AiManager:
         max_tokens: int,
         history=None,
         reasoning_effort: str = "low",
+        route: str = "unknown",
     ) -> str:
         executor = getattr(self, "executor", None)
         if executor is None:
@@ -160,6 +161,7 @@ class AiManager:
             executor = AIExecutor(client)
             self.executor = executor
 
+        effective_route = route if route != "unknown" else RoutingPolicy.legacy_route(user)
         return await executor.generate(
             system=system,
             user=user,
@@ -167,6 +169,7 @@ class AiManager:
             max_tokens=max_tokens,
             history=history,
             reasoning_effort=reasoning_effort,
+            route=effective_route,
         )
 
     async def chat(self, user_name: str, content: str, history=None):

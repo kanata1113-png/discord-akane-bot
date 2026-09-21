@@ -1,11 +1,50 @@
 from __future__ import annotations
 
+from config import Config
+
 
 class PromptBuilder:
     """Builds prompts without deciding which model executes them."""
 
-    @staticmethod
-    def chat_system_prompt(regulation_mode: bool = False) -> str:
+    RESPONSE_LENGTH_TARGETS = {
+        Config.FAST_MODEL: 420,
+        Config.CHAT_MODEL: 840,
+        Config.REASONING_MODEL: 1680,
+    }
+
+    @classmethod
+    def response_length_target(cls, model: str | None) -> int:
+        """Return the everyday answer-length target in Japanese characters.
+
+        The target is a soft prompt-level budget, not a destructive post-generation
+        truncation limit. Unknown/omitted models fail toward the shortest everyday
+        profile so compatibility callers remain cost-conscious.
+        """
+        return cls.RESPONSE_LENGTH_TARGETS.get(model, 420)
+
+    @classmethod
+    def response_style_prompt(cls, model: str | None, *, detail_level: str = "default", target_characters: int | None = None) -> str:
+        target = target_characters or cls.response_length_target(model)
+        return f"""
+【日常回答スタイル】
+・特別な指定がなければ、回答本文は日本語でおおむね{target}文字以内を目安にする
+・文字数は厳密な切り捨て上限ではない。正確さや必要な説明を壊す無理な省略はしない
+・ユーザーが長さ、形式、詳しさを明示した場合は、その指定を優先する
+・絵文字を適度に交え、親しみやすくする
+・Discordで読みやすいMarkdownを使い、短い段落や箇条書きで構造化する
+・大きな見出しになる # / ## / ### は使わない。見出しが必要なら **太字** を使う
+・空行を何行も連続させない。段落や箇条書きはコンパクトに配置する
+・同じ内容の言い換えや不要な前置きを減らし、結論・要点を先に示す
+""".strip()
+
+    @classmethod
+    def chat_system_prompt(
+        cls,
+        regulation_mode: bool = False,
+        model: str | None = None,
+        detail_level: str = "default",
+        target_characters: int | None = None,
+    ) -> str:
         base_prompt = """
 あなたは「表自派茜（ひょうじは あかね）」という
 DiscordサーバーのマスコットAIです。
@@ -23,6 +62,8 @@ DiscordサーバーのマスコットAIです。
 不確かな内容は断定せず、その旨を明示してください。
 ユーザーの意見に無条件に同意する必要はありません。
 """
+
+        base_prompt += "\n\n" + cls.response_style_prompt(model, detail_level=detail_level, target_characters=target_characters)
 
         if regulation_mode:
             base_prompt += """

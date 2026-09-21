@@ -3,6 +3,7 @@ import pytest
 from config import Config
 from services.ai_orchestrator import AIOrchestrator
 from services.jev_model_router import JevRouteDecision
+from services.prompt_builder import PromptBuilder
 from services.routing_policy import RoutingPolicy
 
 
@@ -39,6 +40,7 @@ async def test_orchestrator_coordinates_route_prompt_and_execution():
     assert model == Config.CHAT_MODEL
     assert route == "reasoning"
     assert captured["model"] == Config.CHAT_MODEL
+    assert "おおむね840文字以内" in captured["system"]
     assert captured["history"] == [{"role": "user", "content": "previous"}]
 
 
@@ -71,6 +73,7 @@ async def test_orchestrator_preserves_regulation_prompt_independent_of_route():
     )
 
     assert "【表現の自由・規制関連】" in captured["system"]
+    assert "おおむね420文字以内" in captured["system"]
     assert captured["model"] == Config.FAST_MODEL
 
 
@@ -80,3 +83,21 @@ def test_cost_routing_model_tiers():
     assert RoutingPolicy.tier_for_route("regulation").model == Config.CHAT_MODEL
     assert RoutingPolicy.tier_for_route("long-question").model == Config.CHAT_MODEL
     assert RoutingPolicy.tier_for_route("deep-reasoning").model == Config.REASONING_MODEL
+
+
+def test_response_length_targets_follow_model_tiers():
+    assert PromptBuilder.response_length_target(Config.FAST_MODEL) == 420
+    assert PromptBuilder.response_length_target(Config.CHAT_MODEL) == 840
+    assert PromptBuilder.response_length_target(Config.REASONING_MODEL) == 1680
+
+
+def test_response_style_uses_compact_discord_markdown():
+    prompt = PromptBuilder.response_style_prompt(Config.REASONING_MODEL)
+
+    assert "おおむね1680文字以内" in prompt
+    assert "絵文字" in prompt
+    assert "Markdown" in prompt
+    assert "# / ## / ### は使わない" in prompt
+    assert "**太字**" in prompt
+    assert "空行を何行も連続させない" in prompt
+    assert "ユーザーが長さ、形式、詳しさを明示した場合" in prompt

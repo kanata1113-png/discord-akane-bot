@@ -7,10 +7,13 @@ from time import perf_counter
 
 from services.budget_controller import BudgetController, BudgetDecision
 from services.control_plane_metrics import ControlPlaneEvent, ControlPlaneTelemetry
+from services.detail_intent import DetailIntent
 from services.intent_controller import IntentController, IntentDecision
 from services.orchestration_context import OrchestrationContext, OrchestrationContextBuilder
+from services.output_budget import OutputBudgetPolicy
 from services.prompt_builder import PromptBuilder
 from services.routing_policy import RouteSelection, RoutingPolicy
+from services.sol_promotion import SolPromotionGate
 
 logger = logging.getLogger("AkaneBot")
 GenerateCallable = Callable[..., Awaitable[str]]
@@ -49,9 +52,14 @@ class AIOrchestrator:
             return BudgetDecision(route=route.route, max_output_tokens=route.max_output_tokens, hard_cap=decision.hard_cap, reason=route.budget_reason or "routing_policy_budget", controller_enabled=False)
         return decision
 
-    def build_prompts(self, *, user_name: str, content: str, context: OrchestrationContext) -> tuple[str, str]:
+    def build_prompts(self, *, user_name: str, content: str, context: OrchestrationContext, route: RouteSelection, detail_level: str, target_characters: int) -> tuple[str, str]:
         return (
-            PromptBuilder.chat_system_prompt(regulation_mode=context.regulation_mode),
+            PromptBuilder.chat_system_prompt(
+                regulation_mode=context.regulation_mode,
+                model=route.model,
+                detail_level=detail_level,
+                target_characters=target_characters,
+            ),
             PromptBuilder.chat_user_prompt(user_name, content),
         )
 
@@ -59,43 +67,35 @@ class AIOrchestrator:
         context = self.prepare_context(content=content, history=history)
         intent = self.classify_intent(context)
         route = await self.select_route(content=content, history=history)
-        budget = self.select_budget(route=route, context=context)
-        system_prompt, user_prompt = self.build_prompts(user_name=user_name, content=content, context=context)
+        route, _promotion = SolPromotionGate.apply(route, content)
+        route_budget = self.select_budget(route=route, context=context)
+        detail = DetailIntent.classify(content)
+        output = OutputBudgetPolicy.for_request(route.model, detail.level, route_budget.max_output_tokens)
+        budget = BudgetDecision(route=route.route, max_output_tokens=output.max_output_tokens, hard_cap=route_budget.hard_cap, reason=output.reason, controller_enabled=True)
+        system_prompt, user_prompt = self.build_prompts(
+            user_name=user_name, content=content, context=context, route=route,
+            detail_level=detail.level, target_characters=output.target_characters,
+        )
         plan = OrchestrationPlan(context=context, intent=intent, route=route, budget=budget, system_prompt=system_prompt, user_prompt=user_prompt)
         self.telemetry.emit(ControlPlaneEvent(
-            event_id=route.event_id,
-            phase="plan_built",
-            route=route.route,
-            source=route.source,
-            intent=intent.intent,
-            pipeline=intent.effective_pipeline,
-            model=route.model,
-            max_output_tokens=budget.max_output_tokens,
-            budget_reason=budget.reason,
+            event_id=route.event_id, phase="plan_built", route=route.route, source=route.source,
+            intent=intent.intent, pipeline=intent.effective_pipeline, model=route.model,
+            max_output_tokens=budget.max_output_tokens, budget_reason=budget.reason,
         ))
         return plan
 
     async def execute(self, plan: OrchestrationPlan, *, history=None) -> str:
         started = perf_counter()
         reply = await self.generate(
-            system=plan.system_prompt,
-            user=plan.user_prompt,
-            model=plan.route.model,
-            max_tokens=plan.budget.max_output_tokens,
-            history=history,
+            system=plan.system_prompt, user=plan.user_prompt, model=plan.route.model,
+            max_tokens=plan.budget.max_output_tokens, history=history,
             reasoning_effort=plan.route.reasoning_effort,
         )
         self.telemetry.emit(ControlPlaneEvent(
-            event_id=plan.route.event_id,
-            phase="execution_complete",
-            route=plan.route.route,
-            source=plan.route.source,
-            intent=plan.intent.intent,
-            pipeline=plan.intent.effective_pipeline,
-            model=plan.route.model,
-            max_output_tokens=plan.budget.max_output_tokens,
-            budget_reason=plan.budget.reason,
-            latency_ms=int((perf_counter() - started) * 1000),
+            event_id=plan.route.event_id, phase="execution_complete", route=plan.route.route,
+            source=plan.route.source, intent=plan.intent.intent, pipeline=plan.intent.effective_pipeline,
+            model=plan.route.model, max_output_tokens=plan.budget.max_output_tokens,
+            budget_reason=plan.budget.reason, latency_ms=int((perf_counter() - started) * 1000),
         ))
         return reply
 
