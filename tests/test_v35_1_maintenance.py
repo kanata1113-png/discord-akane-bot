@@ -38,7 +38,7 @@ async def test_chat_passes_reasoning_limit_to_responses_call():
     )
 
     assert reply == "ok"
-    assert model == Config.REASONING_MODEL
+    assert model == Config.CHAT_MODEL
     assert route == "regulation"
     assert captured["max_tokens"] == 2000
 
@@ -88,9 +88,9 @@ async def test_max_output_tokens_incomplete_response_gets_notice(caplog):
     result = await manager.call_gpt(
         system="system",
         user="user",
-        model=Config.REASONING_MODEL,
+        model=Config.CHAT_MODEL,
         max_tokens=2000,
-        reasoning_effort=Config.REASONING_EFFORT,
+        reasoning_effort=Config.CHAT_REASONING_EFFORT,
     )
 
     assert result.startswith("途中までの回答")
@@ -119,9 +119,9 @@ async def test_completed_response_does_not_get_incomplete_notice():
     result = await manager.call_gpt(
         system="system",
         user="user",
-        model=Config.CHAT_MODEL,
+        model=Config.FAST_MODEL,
         max_tokens=1500,
-        reasoning_effort=Config.CHAT_REASONING_EFFORT,
+        reasoning_effort=Config.FAST_REASONING_EFFORT,
     )
 
     assert result == "最後までの回答"

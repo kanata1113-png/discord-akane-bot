@@ -57,8 +57,13 @@ class RouteSelection:
 class RoutingPolicy:
     """Single chat-routing policy with safe Legacy fallback.
 
-    New behavioral features remain opt-in. Intent and relative-cost fields are
-    observational only and never alter route selection.
+    Cost-routing v0.1 uses a three-tier model policy:
+    - normal-chat -> Luna (default)
+    - reasoning/regulation/long-question -> Terra (standard work)
+    - deep-reasoning -> Sol (explicit promotion)
+
+    The routing labels are preserved so Jev, continuity, telemetry, and replay
+    remain backward-compatible while model assignment becomes cost-aware.
     """
 
     def __init__(
@@ -77,10 +82,22 @@ class RoutingPolicy:
     @staticmethod
     def tier_for_route(route: str) -> ModelTier:
         if route == "deep-reasoning":
-            return ModelTier(Config.REASONING_MODEL, Config.DEEP_REASONING_EFFORT, Config.DEEP_REASONING_MAX_TOKENS)
+            return ModelTier(
+                Config.REASONING_MODEL,
+                Config.DEEP_REASONING_EFFORT,
+                Config.DEEP_REASONING_MAX_TOKENS,
+            )
         if route in {"reasoning", "regulation", "long-question"}:
-            return ModelTier(Config.REASONING_MODEL, Config.REASONING_EFFORT, Config.REASONING_MAX_TOKENS)
-        return ModelTier(Config.CHAT_MODEL, Config.CHAT_REASONING_EFFORT, Config.NORMAL_CHAT_MAX_TOKENS)
+            return ModelTier(
+                Config.CHAT_MODEL,
+                Config.CHAT_REASONING_EFFORT,
+                Config.REASONING_MAX_TOKENS,
+            )
+        return ModelTier(
+            Config.FAST_MODEL,
+            Config.FAST_REASONING_EFFORT,
+            Config.NORMAL_CHAT_MAX_TOKENS,
+        )
 
     @staticmethod
     def normalize_legacy_route(route: str) -> str:
@@ -186,7 +203,11 @@ class RoutingPolicy:
         if not self.adaptive_budget_enabled:
             return selection
         budget = TokenBudgetPolicy.for_request(selection.route, content)
-        return replace(selection, max_output_tokens=budget.max_output_tokens, budget_reason=budget.reason)
+        return replace(
+            selection,
+            max_output_tokens=budget.max_output_tokens,
+            budget_reason=budget.reason,
+        )
 
     @staticmethod
     def _with_observations(selection: RouteSelection, content: str) -> RouteSelection:

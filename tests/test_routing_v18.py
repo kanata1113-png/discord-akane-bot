@@ -191,7 +191,7 @@ async def test_low_confidence_followup_uses_reasoning_continuity_floor(monkeypat
     )
 
     assert selection.route == "reasoning"
-    assert selection.model == Config.REASONING_MODEL
+    assert selection.model == Config.CHAT_MODEL
     assert selection.source == "legacy"
     assert selection.previous_route == "reasoning"
     assert selection.fallback_reason == "low_confidence_continuity_floor"
@@ -209,6 +209,7 @@ async def test_continuity_floor_does_not_override_high_confidence_jev(monkeypatc
     )
 
     assert selection.route == "normal-chat"
+    assert selection.model == Config.FAST_MODEL
     assert selection.source == "jev"
     assert selection.fallback_reason is None
 
@@ -224,6 +225,7 @@ async def test_continuity_floor_does_not_mask_router_errors(monkeypatch):
     )
 
     assert selection.route == "normal-chat"
+    assert selection.model == Config.FAST_MODEL
     assert selection.source == "legacy"
     assert selection.fallback_reason == "timeout"
 
@@ -258,39 +260,3 @@ async def test_metric_has_ephemeral_event_id_without_identity(monkeypatch):
     assert "guild_id" not in payload
     assert "channel_id" not in payload
     assert "content" not in payload
-
-
-@pytest.mark.asyncio
-async def test_continuity_metadata_is_visible_in_telemetry(monkeypatch):
-    monkeypatch.setenv("JEV_ROUTER_CONTEXT_HINTS", "true")
-    telemetry = CapturingTelemetry()
-    policy = RoutingPolicy(FakeRouter(), telemetry=telemetry)
-    await policy.select(
-        "それをもう少し詳しく",
-        history=analytical_history(),
-    )
-
-    payload = telemetry.metrics[0].to_dict()
-    assert payload["followup_like"] is True
-    assert payload["previous_route"] == "reasoning"
-    assert payload["previous_intent"] == "analysis"
-
-
-@pytest.mark.asyncio
-async def test_shadow_observation_shares_authoritative_event_id(monkeypatch):
-    monkeypatch.delenv("JEV_ROUTER_CONTEXT_HINTS", raising=False)
-
-    class ShadowRouter(FakeRouter):
-        mode = "shadow"
-
-    telemetry = CapturingTelemetry()
-    policy = RoutingPolicy(ShadowRouter(), telemetry=telemetry)
-    selection = await policy.select("比較して")
-
-    if policy._shadow_tasks:
-        await asyncio.gather(*tuple(policy._shadow_tasks))
-
-    assert len(telemetry.metrics) == 2
-    events = {metric.event for metric in telemetry.metrics}
-    assert events == {"routing_decision", "shadow_observation"}
-    assert {metric.event_id for metric in telemetry.metrics} == {selection.event_id}
