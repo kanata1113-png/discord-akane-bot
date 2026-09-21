@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from services.capability_catalog import DISCOVERY_PILOT_SPECS
+from services.capability_catalog import DISCOVERY_RELEASE_C_SPECS
 from services.capability_discovery import (
     DiscoveryCandidate,
     discover_locally,
@@ -10,7 +10,7 @@ from services.capability_discovery import (
 from services.jev_discovery_reranker import DiscoveryReranker
 
 
-DISCOVERY_SPECS = DISCOVERY_PILOT_SPECS
+DISCOVERY_SPECS = DISCOVERY_RELEASE_C_SPECS
 
 
 @dataclass(frozen=True, slots=True)
