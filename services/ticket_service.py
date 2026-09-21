@@ -41,12 +41,12 @@ class TicketService:
         channel_id: int,
         user_id: int,
         category: str,
-    ) -> None:
+    ) -> int:
         existing = await self.get_open_ticket(guild_id, user_id)
         if existing:
             raise ValueError("User already has an open ticket.")
 
-        await self.tickets.create(
+        return await self.tickets.create(
             guild_id,
             channel_id,
             user_id,
@@ -55,6 +55,12 @@ class TicketService:
 
     async def close_ticket(self, channel_id: int) -> None:
         await self.tickets.close(channel_id)
+
+    async def reopen_ticket(self, channel_id: int) -> None:
+        await self.tickets.reopen(channel_id)
+
+    async def claim_ticket(self, channel_id: int, staff_user_id: int) -> None:
+        await self.tickets.claim(channel_id, staff_user_id)
 
     async def cleanup_missing_ticket(self, channel_id: int) -> None:
         await self.close_ticket(channel_id)
