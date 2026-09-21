@@ -53,9 +53,9 @@ class AkaneBot(commands.Bot):
 
     async def setup_hook(self):
         logger.info("==============================================")
-        logger.info("Akane Bot v34 starting...")
+        logger.info("Akane Bot AI Platform v1.0 candidate starting...")
         logger.info(f"Database path: {Config.DB_NAME}")
-        logger.info("GPT-5.6 routing:")
+        logger.info("GPT-5.6 model tiers:")
         logger.info(
             f"  Normal chat: {Config.CHAT_MODEL} "
             f"[{Config.CHAT_REASONING_EFFORT}]"
@@ -71,6 +71,10 @@ class AkaneBot(commands.Bot):
         logger.info(
             f"  Fast tasks: {Config.FAST_MODEL} "
             f"[{Config.FAST_REASONING_EFFORT}]"
+        )
+        logger.info(
+            "  Jev routing mode: %s",
+            self.ai.jev_router.mode,
         )
         logger.info(f"Memory limit: {Config.MEMORY_MESSAGE_LIMIT}")
         logger.info(
@@ -160,11 +164,14 @@ class AkaneBot(commands.Bot):
         logger.info(f"OpenAI SDK version: {openai.__version__}")
         logger.info(f"Database: {Config.DB_NAME}")
         logger.info(f"Guild count: {len(self.guilds)}")
-        logger.info("GPT-5.6 model routing:")
+        logger.info("AI platform v1.0 candidate:")
         logger.info(f"Normal = {Config.CHAT_MODEL}")
         logger.info(f"Reasoning = {Config.REASONING_MODEL}")
         logger.info(f"Fast = {Config.FAST_MODEL}")
+        logger.info(f"Jev mode = {self.ai.jev_router.mode}")
         logger.info("Responses API: READY")
+        logger.info("Routing policy: READY")
+        logger.info("Routing telemetry: READY")
         logger.info("AI memory: READY")
         logger.info("XP system: READY")
         logger.info("Spam protection: READY")
@@ -174,7 +181,7 @@ class AkaneBot(commands.Bot):
         logger.info("Fortune: READY")
         logger.info("Weekly XP ranking: READY")
         logger.info("Community rankings: READY")
-        logger.info("Akane Bot v34 READY")
+        logger.info("Akane Bot AI Platform v1.0 candidate READY")
         logger.info("==============================================")
 
     async def on_app_command_error(
