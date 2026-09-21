@@ -48,8 +48,6 @@ DISCOVERY_PILOT_SPECS = (
 )
 
 
-# Release C expands candidate discovery only. Direct execution remains governed
-# by discovery_execution_policy.py and therefore stays fail-closed.
 DISCOVERY_RELEASE_C_SPECS = (
     *DISCOVERY_PILOT_SPECS,
     LEADERBOARD_SPEC,
@@ -58,6 +56,17 @@ DISCOVERY_RELEASE_C_SPECS = (
     TRANSLATE_SPEC,
     DEFINE_SPEC,
     SUMMARY_SPEC,
+)
+
+
+# Release D adds only the three migrated WRITE_CONFIRM capabilities that have a
+# dedicated requester-only argument/scope + final-confirmation UI. Their presence
+# in discovery does not put them in the direct-execution allowlist.
+DISCOVERY_RELEASE_D_SPECS = (
+    *DISCOVERY_RELEASE_C_SPECS,
+    TITLE_SET_SPEC,
+    MEMORY_FORGET_SPEC,
+    REMIND_SPEC,
 )
 
 
@@ -71,3 +80,7 @@ def discovery_pilot_specs():
 
 def discovery_release_c_specs():
     return DISCOVERY_RELEASE_C_SPECS
+
+
+def discovery_release_d_specs():
+    return DISCOVERY_RELEASE_D_SPECS
