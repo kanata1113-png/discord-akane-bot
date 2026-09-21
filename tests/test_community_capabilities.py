@@ -39,6 +39,7 @@ def test_release_e_risks_are_explicit():
     assert MESSAGE_SEARCH_SPEC.requires_confirmation is False
     assert EVENT_CREATE_SPEC.risk is CapabilityRisk.WRITE_CONFIRM
     assert EVENT_CREATE_SPEC.requires_confirmation is True
+    assert EVENT_CREATE_SPEC.slash_command == "/event_create"
     assert POLL_CREATE_SPEC.risk is CapabilityRisk.WRITE_CONFIRM
     assert POLL_CREATE_SPEC.requires_confirmation is True
 
@@ -71,31 +72,32 @@ async def test_search_dispatch_preserves_arguments():
 async def test_event_requires_confirmation_before_adapter_call():
     source = RecordingCommunitySource()
     dispatcher = build_community_capability_dispatcher(source)
-    with pytest.raises(PermissionError):
-        await dispatch_event_create(
-            dispatcher,
-            user_id=1,
-            guild_id=2,
-            channel_id=3,
-            title="勉強会",
-            date="2026/09/30",
-            time="20:00",
-            confirmed=False,
-        )
-    assert source.calls == []
-
-    result = await dispatch_event_create(
-        dispatcher,
+    kwargs = dict(
         user_id=1,
         guild_id=2,
         channel_id=3,
-        title="勉強会",
-        date="2026/09/30",
-        time="20:00",
-        confirmed=True,
+        name="勉強会",
+        start="2026/09/30 20:00",
+        end="2026/09/30 22:00",
+        event_type="external",
+        location="Discord",
+        event_channel_id=None,
+        description="判例勉強会",
     )
+    with pytest.raises(PermissionError):
+        await dispatch_event_create(dispatcher, **kwargs, confirmed=False)
+    assert source.calls == []
+
+    result = await dispatch_event_create(dispatcher, **kwargs, confirmed=True)
     assert result.capability_id == EVENT_CREATE_CAPABILITY_ID
-    assert source.calls[-1][0] == "event"
+    kind, call = source.calls[-1]
+    assert kind == "event"
+    assert call["name"] == "勉強会"
+    assert call["start"] == "2026/09/30 20:00"
+    assert call["end"] == "2026/09/30 22:00"
+    assert call["event_type"] == "external"
+    assert call["location"] == "Discord"
+    assert call["description"] == "判例勉強会"
 
 
 @pytest.mark.asyncio
