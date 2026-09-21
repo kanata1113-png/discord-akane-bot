@@ -59,6 +59,24 @@ CHAT_INTENT_MARKERS = (
     "教えて",
 )
 
+TITLE_WRITE_MARKERS = (
+    "変更",
+    "変えて",
+    "設定",
+    "装備",
+    "つけて",
+)
+
+MEMORY_DELETE_MARKERS = (
+    "消して",
+    "削除",
+    "忘れて",
+    "忘れ",
+    "clear",
+    "delete",
+    "forget",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class DiscoveryCandidate:
@@ -77,6 +95,31 @@ class DiscoveryDecision:
     reason: str
 
 
+def _has_unsupported_write_intent(text: str) -> bool:
+    """Reject write-shaped intents not yet approved for discovery.
+
+    Release C intentionally exposes read/AI candidates before WRITE_CONFIRM
+    capabilities. Without this local guard, phrases such as "称号を変更して"
+    could incorrectly surface the read-only titles candidate, or "記憶を消して"
+    could surface memory status. Those requests must stay outside discovery until
+    a dedicated confirmation UX is implemented.
+    """
+
+    has_title_subject = any(
+        marker in text for marker in ("称号", "title")
+    )
+    if has_title_subject and any(marker in text for marker in TITLE_WRITE_MARKERS):
+        return True
+
+    has_memory_subject = any(
+        marker in text for marker in ("メモリー", "記憶", "memory")
+    )
+    if has_memory_subject and any(marker in text for marker in MEMORY_DELETE_MARKERS):
+        return True
+
+    return False
+
+
 def should_attempt_discovery(content: str) -> bool:
     """Cheap local gate. False means ordinary chat continues unchanged."""
 
@@ -84,6 +127,8 @@ def should_attempt_discovery(content: str) -> bool:
     if not text or len(text) > 180:
         return False
     if any(marker in text for marker in CHAT_INTENT_MARKERS):
+        return False
+    if _has_unsupported_write_intent(text):
         return False
 
     has_capability = any(
