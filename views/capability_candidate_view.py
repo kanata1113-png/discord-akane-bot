@@ -14,10 +14,16 @@ from views.write_capability_view import (
 )
 
 
+# Frozen Release D contract. Existing D regression tests intentionally assert
+# this exact set so later releases cannot silently rewrite historical scope.
 WRITE_CONFIRM_DISCOVERY_IDS = frozenset(
-    {"title_set", "memory_forget", "remind", "event_create", "poll_create"}
+    {"title_set", "memory_forget", "remind"}
 )
+
 COMMUNITY_WRITE_DISCOVERY_IDS = frozenset({"event_create", "poll_create"})
+RELEASE_E_WRITE_CONFIRM_DISCOVERY_IDS = frozenset(
+    {*WRITE_CONFIRM_DISCOVERY_IDS, *COMMUNITY_WRITE_DISCOVERY_IDS}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,7 +107,7 @@ class CapabilityCandidateView(discord.ui.View):
             item.disabled = True
         self.stop()
 
-        if candidate.capability_id in WRITE_CONFIRM_DISCOVERY_IDS:
+        if candidate.capability_id in RELEASE_E_WRITE_CONFIRM_DISCOVERY_IDS:
             if candidate.capability_id in COMMUNITY_WRITE_DISCOVERY_IDS:
                 view = CommunityWriteEntryView(
                     requester_id=self.requester_id,
