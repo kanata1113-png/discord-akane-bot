@@ -26,7 +26,7 @@ class AIExecutor:
         value = getattr(usage, name, 0) if usage is not None else 0
         return int(value or 0)
 
-    def _record_usage(self, response, *, model: str, route: str, latency_ms: int) -> None:
+    def _record_usage(self, response, *, model: str, route: str, latency_ms: int, completed: bool) -> None:
         usage = getattr(response, "usage", None)
         input_tokens = self._usage_value(usage, "input_tokens")
         output_tokens = self._usage_value(usage, "output_tokens")
@@ -45,6 +45,7 @@ class AIExecutor:
             reasoning_tokens=reasoning,
             latency_ms=latency_ms,
             estimated_cost_units=CostTelemetry.estimate_actual_units(model, input_tokens, output_tokens),
+            completed=completed,
         ))
 
     async def generate(
@@ -80,10 +81,16 @@ class AIExecutor:
                 timeout=90,
             )
             latency_ms = int((perf_counter() - started) * 1000)
-            self._record_usage(response, model=model, route=route, latency_ms=latency_ms)
+            status = getattr(response, "status", None)
+            self._record_usage(
+                response,
+                model=model,
+                route=route,
+                latency_ms=latency_ms,
+                completed=status != "incomplete",
+            )
 
             text = (response.output_text or "").strip()
-            status = getattr(response, "status", None)
             incomplete_details = getattr(response, "incomplete_details", None)
             incomplete_reason = getattr(incomplete_details, "reason", None)
             check = ResponseGuard.check(text, incomplete=status == "incomplete")

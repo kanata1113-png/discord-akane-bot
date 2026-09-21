@@ -54,7 +54,7 @@ def test_control_plane_snapshot_is_metadata_only():
     snapshot = plane.snapshot()
     values = snapshot.__dict__
 
-    assert snapshot.version == "3.0"
+    assert snapshot.version == "3.1"
     assert values["router_mode"] == "production"
     assert "content" not in values
     assert "history" not in values
