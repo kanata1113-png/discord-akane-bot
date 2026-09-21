@@ -27,7 +27,7 @@ class OutputBudgetPolicy:
     }
     EXPANDED = {
         Config.FAST_MODEL: (700, 1000),
-        Config.CHAT_MODEL: (1200, 1700),
+        Config.CHAT_MODEL: (1200, Config.REASONING_MAX_TOKENS),
         Config.REASONING_MODEL: (2200, 3000),
     }
 
