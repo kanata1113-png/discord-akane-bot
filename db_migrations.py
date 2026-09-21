@@ -137,11 +137,25 @@ async def _baseline_v34_schema(db: aiosqlite.Connection) -> None:
     await _validate_baseline_schema(db)
 
 
+async def _native_ticket_lifecycle_v2(db: aiosqlite.Connection) -> None:
+    cursor = await db.execute('PRAGMA table_info("tickets")')
+    columns = {str(row[1]) for row in await cursor.fetchall()}
+    if "assigned_staff_id" not in columns:
+        await db.execute(
+            "ALTER TABLE tickets ADD COLUMN assigned_staff_id INTEGER"
+        )
+
+
 MIGRATIONS = (
     Migration(
         version=1,
         name="baseline_v34_schema",
         apply=_baseline_v34_schema,
+    ),
+    Migration(
+        version=2,
+        name="native_ticket_lifecycle",
+        apply=_native_ticket_lifecycle_v2,
     ),
 )
 
