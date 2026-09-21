@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Awaitable, Callable, Sequence
 
 import discord
 
@@ -14,12 +14,19 @@ class CandidateSelection:
     slash_command: str | None
 
 
-class CapabilityCandidateView(discord.ui.View):
-    """Selection-only discovery panel.
+CandidateExecutor = Callable[
+    [discord.Interaction, DiscoveryCandidate],
+    Awaitable[bool],
+]
 
-    Buttons record which existing slash capability the requesting user selected.
-    This view deliberately has no dispatcher or handler reference, so selection
-    cannot execute a capability.
+
+class CapabilityCandidateView(discord.ui.View):
+    """Explicit-selection discovery panel.
+
+    Discovery itself never executes a capability. An optional executor may run
+    only after the requesting user presses a candidate button. Unsupported
+    candidates remain selection-only and fall back to the existing slash-command
+    guidance. Cancellation never invokes the executor.
     """
 
     def __init__(
@@ -27,12 +34,14 @@ class CapabilityCandidateView(discord.ui.View):
         candidates: Sequence[DiscoveryCandidate],
         *,
         requester_id: int,
+        executor: CandidateExecutor | None = None,
         timeout: float = 60.0,
     ) -> None:
         super().__init__(timeout=timeout)
         self.requester_id = requester_id
         self.selection: CandidateSelection | None = None
         self.cancelled = False
+        self._executor = executor
 
         for candidate in tuple(candidates)[:4]:
             button = discord.ui.Button(
@@ -92,14 +101,33 @@ class CapabilityCandidateView(discord.ui.View):
             item.disabled = True
 
         command = candidate.slash_command or candidate.name
-        await interaction.response.edit_message(
-            content=(
-                f"選択: **{candidate.name}**\n"
-                f"使うコマンドは `{command}` やで。"
-                "\n※ まだ自動実行はしてへんで。"
-            ),
-            view=self,
-        )
+        executed = False
+
+        if self._executor is not None:
+            try:
+                executed = await self._executor(interaction, candidate)
+            except Exception:
+                executed = False
+
+        if executed:
+            if interaction.message is not None:
+                await interaction.message.edit(
+                    content=(
+                        f"実行済み: **{candidate.name}**\n"
+                        "この候補の処理はここで終了したで。"
+                    ),
+                    view=self,
+                )
+        else:
+            await interaction.response.edit_message(
+                content=(
+                    f"選択: **{candidate.name}**\n"
+                    f"使うコマンドは `{command}` やで。"
+                    "\n※ この候補は直接実行せず、コマンド案内で終了するで。"
+                ),
+                view=self,
+            )
+
         self.stop()
 
     async def _cancel(
@@ -129,5 +157,6 @@ def candidate_panel_text(
     return (
         "もしかして、次の機能を探してる？\n"
         f"候補は{count}件や。使いたいものを選んでな。"
-        "\n※ 選んでも、この段階ではコマンドは自動実行されへんで。"
+        "\n※ 対応している読み取り機能は選択後にそのまま実行するで。"
+        "未対応の候補は既存コマンドを案内するで。"
     )
