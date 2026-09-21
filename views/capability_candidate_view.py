@@ -31,7 +31,14 @@ SelectionCallback = Callable[[discord.Interaction, CandidateSelection], Awaitabl
 class CapabilityCandidateView(discord.ui.View):
     """Discovery panel gated by an explicit requester selection."""
 
-    def __init__(self, candidates: Sequence[DiscoveryCandidate], *, requester_id: int, timeout: float = 60.0, on_select: SelectionCallback | None = execute_discovery_selection) -> None:
+    def __init__(
+        self,
+        candidates: Sequence[DiscoveryCandidate],
+        *,
+        requester_id: int,
+        timeout: float = 60.0,
+        on_select: SelectionCallback | None = execute_discovery_selection,
+    ) -> None:
         super().__init__(timeout=timeout)
         self.requester_id = requester_id
         self.selection: CandidateSelection | None = None
@@ -39,49 +46,106 @@ class CapabilityCandidateView(discord.ui.View):
         self._on_select = on_select
 
         for candidate in tuple(candidates)[:4]:
-            button = discord.ui.Button(label=candidate.name[:80], style=discord.ButtonStyle.secondary, custom_id=f"cap_discovery:{candidate.capability_id}")
-            async def callback(interaction: discord.Interaction, *, selected=candidate) -> None:
+            button = discord.ui.Button(
+                label=candidate.name[:80],
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"cap_discovery:{candidate.capability_id}",
+            )
+
+            async def callback(
+                interaction: discord.Interaction,
+                *,
+                selected=candidate,
+            ) -> None:
                 await self._select(interaction, selected)
+
             button.callback = callback
             self.add_item(button)
 
-        cancel_button = discord.ui.Button(label="キャンセル", style=discord.ButtonStyle.secondary, custom_id="cap_discovery:cancel")
+        cancel_button = discord.ui.Button(
+            label="キャンセル",
+            style=discord.ButtonStyle.secondary,
+            custom_id="cap_discovery:cancel",
+        )
+
         async def cancel_callback(interaction: discord.Interaction) -> None:
             await self._cancel(interaction)
+
         cancel_button.callback = cancel_callback
         self.add_item(cancel_button)
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self.requester_id:
             return True
-        await interaction.response.send_message("この候補はリクエストした本人だけ選べるで。", ephemeral=True)
+        await interaction.response.send_message(
+            "この候補はリクエストした本人だけ選べるで。",
+            ephemeral=True,
+        )
         return False
 
-    async def _select(self, interaction: discord.Interaction, candidate: DiscoveryCandidate) -> None:
-        self.selection = CandidateSelection(candidate.capability_id, candidate.slash_command)
+    async def _select(
+        self,
+        interaction: discord.Interaction,
+        candidate: DiscoveryCandidate,
+    ) -> None:
+        self.selection = CandidateSelection(
+            candidate.capability_id,
+            candidate.slash_command,
+        )
         for item in self.children:
             item.disabled = True
         self.stop()
 
         if candidate.capability_id in RELEASE_E_WRITE_CONFIRM_DISCOVERY_IDS:
             if candidate.capability_id in COMMUNITY_WRITE_DISCOVERY_IDS:
-                view = CommunityWriteEntryView(requester_id=self.requester_id, capability_id=candidate.capability_id, capability_name=candidate.name)
+                view = CommunityWriteEntryView(
+                    requester_id=self.requester_id,
+                    capability_id=candidate.capability_id,
+                    capability_name=candidate.name,
+                )
             else:
-                view = WriteCapabilityEntryView(requester_id=self.requester_id, capability_id=candidate.capability_id, capability_name=candidate.name)
-            await interaction.response.edit_message(content=write_capability_panel_text(candidate.name), view=view)
+                view = WriteCapabilityEntryView(
+                    requester_id=self.requester_id,
+                    capability_id=candidate.capability_id,
+                    capability_name=candidate.name,
+                )
+            await interaction.response.edit_message(
+                content=write_capability_panel_text(candidate.name),
+                view=view,
+            )
             return
 
-        if candidate.capability_id in PARAMETERIZED_DISCOVERY_IDS:
-            view = ParameterizedCapabilityEntryView(requester_id=self.requester_id, capability_id=candidate.capability_id, capability_name=candidate.name)
+        # Release F parameter collection is the production default path.  A custom
+        # injected selection callback remains authoritative for tests/adapters and
+        # preserves the pre-F fail-closed contract.
+        if (
+            candidate.capability_id in PARAMETERIZED_DISCOVERY_IDS
+            and self._on_select is execute_discovery_selection
+        ):
+            view = ParameterizedCapabilityEntryView(
+                requester_id=self.requester_id,
+                capability_id=candidate.capability_id,
+                capability_name=candidate.name,
+            )
             await interaction.response.edit_message(
-                content=(f"**{candidate.name}** を使うんやな。\n必要な条件だけ入力してもらって、実行前に確認するで。"),
+                content=(
+                    f"**{candidate.name}** を使うんやな。\n"
+                    "必要な条件だけ入力してもらって、実行前に確認するで。"
+                ),
                 view=view,
             )
             return
 
         if self._on_select is None:
             command = candidate.slash_command or candidate.name
-            await interaction.response.edit_message(content=f"選択: **{candidate.name}**\n使うコマンドは `{command}` やで。\n※ まだ自動実行はしてへんで。", view=self)
+            await interaction.response.edit_message(
+                content=(
+                    f"選択: **{candidate.name}**\n"
+                    f"使うコマンドは `{command}` やで。\n"
+                    "※ まだ自動実行はしてへんで。"
+                ),
+                view=self,
+            )
             return
 
         executed = await self._on_select(interaction, self.selection)
@@ -89,7 +153,12 @@ class CapabilityCandidateView(discord.ui.View):
             content = f"実行済み: **{candidate.name}**"
         else:
             command = candidate.slash_command or candidate.name
-            content = f"選択: **{candidate.name}**\nこの機能はこの画面からの直接実行対象外やで。\n必要なら `{command}` を使ってな。"
+            content = (
+                f"選択: **{candidate.name}**\n"
+                "この機能はこの画面からの直接実行対象外やで。\n"
+                f"必要なら `{command}` を使ってな。"
+            )
+
         if interaction.response.is_done():
             await interaction.message.edit(content=content, view=self)
         else:
@@ -100,7 +169,13 @@ class CapabilityCandidateView(discord.ui.View):
         self.selection = None
         for item in self.children:
             item.disabled = True
-        await interaction.response.edit_message(content="キャンセル済みやで。\nこのメッセージの処理はここで終了したで。", view=self)
+        await interaction.response.edit_message(
+            content=(
+                "キャンセル済みやで。\n"
+                "このメッセージの処理はここで終了したで。"
+            ),
+            view=self,
+        )
         self.stop()
 
 
@@ -109,5 +184,6 @@ def candidate_panel_text(candidates: Sequence[DiscoveryCandidate]) -> str:
     return (
         "もしかして、次の機能を探してる？\n"
         f"候補は{count}件や。使いたいものを選んでな。"
-        "\n※ 読み取り機能は必要なら条件入力を案内し、書き込みは必ず確認を挟むで。"
+        "\n※ 対応済みの読み取り機能は選択後にそのまま実行。"
+        "条件が必要な機能は入力を案内し、書き込みは必ず確認を挟むで。"
     )
