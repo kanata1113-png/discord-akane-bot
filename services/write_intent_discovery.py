@@ -21,6 +21,13 @@ _EVENT_SUBJECTS = ("イベント", "event", "予定")
 _EVENT_ACTIONS = ("作って", "作成", "登録", "設定", "追加", "開いて")
 _POLL_SUBJECTS = ("投票", "アンケート", "poll")
 _POLL_ACTIONS = ("作って", "作成", "開始", "登録", "追加", "取りたい")
+_TICKET_SUBJECTS = (
+    "チケット", "ticket", "問い合わせ", "管理人", "管理者", "運営", "サポート", "相談"
+)
+_TICKET_ACTIONS = (
+    "作って", "作成", "開いて", "問い合わせたい", "相談したい", "連絡したい",
+    "聞きたい", "送りたい", "したい", "お願い",
+)
 
 
 def discover_write_intent(content: str) -> WriteIntentDecision:
@@ -73,6 +80,16 @@ def discover_write_intent(content: str) -> WriteIntentDecision:
             "poll_create",
             "投票作成",
             "poll_create",
+        )
+
+    if any(subject in text for subject in _TICKET_SUBJECTS) and any(
+        verb in text for verb in _TICKET_ACTIONS
+    ):
+        return WriteIntentDecision(
+            True,
+            "ticket_create",
+            "問い合わせTicket作成",
+            "ticket_create",
         )
 
     return WriteIntentDecision(False)
