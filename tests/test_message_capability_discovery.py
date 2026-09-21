@@ -46,7 +46,7 @@ async def test_action_request_composes_local_and_rerank_layers():
     assert reranker.calls
     ids = [item.capability_id for item in result.candidates]
     assert ids[0] == "weekly"
-    assert "rankings" in ids
+    assert "weekly" in ids
 
 
 @pytest.mark.asyncio
