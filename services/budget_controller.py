@@ -25,11 +25,15 @@ class BudgetDecision:
 
 
 class BudgetController:
-    """Context-aware output budget controller bounded by existing hard caps."""
+    """Context-aware output budget controller bounded by existing hard caps.
+
+    The v2 controller uses its own feature gate so it can be developed and
+    evaluated without changing the existing v1 adaptive-budget behavior.
+    """
 
     def __init__(self, *, enabled: bool | None = None) -> None:
         self.enabled = (
-            _env_flag("AI_ADAPTIVE_TOKEN_BUDGET", False)
+            _env_flag("AI_BUDGET_CONTROLLER_V2", False)
             if enabled is None
             else bool(enabled)
         )
