@@ -9,7 +9,7 @@ from services.budget_controller import BudgetController, BudgetDecision
 from services.control_plane_metrics import ControlPlaneEvent, ControlPlaneTelemetry
 from services.intent_controller import IntentController, IntentDecision
 from services.orchestration_context import OrchestrationContext, OrchestrationContextBuilder
-from services.prompt_builder import PromptBuilder
+from services.prompt_builder import PromptBuilder\nfrom services.detail_intent import DetailIntent\nfrom services.output_budget import OutputBudgetPolicy\nfrom services.sol_promotion import SolPromotionGate
 from services.routing_policy import RouteSelection, RoutingPolicy
 
 logger = logging.getLogger("AkaneBot")
