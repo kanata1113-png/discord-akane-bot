@@ -28,12 +28,12 @@ class ControlPlaneSnapshot:
 class AIControlPlane:
     """Composition root for Akane's AI request control plane.
 
-    The control plane wires provider selection, routing policy, orchestration,
-    budget/intent controllers and telemetry without owning Discord or database
-    state. Behavior-changing controllers remain governed by their feature flags.
+    v3.1 adds local history optimization, lightweight follow-up downgrades,
+    adaptive output budgets, scored Sol promotion and richer cost telemetry
+    while preserving the existing provider and Discord integration boundaries.
     """
 
-    VERSION = "3.0"
+    VERSION = "3.1"
 
     def __init__(
         self,
