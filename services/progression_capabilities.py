@@ -17,6 +17,7 @@ from services.capability_core import (
 
 
 LEVEL_CAPABILITY_ID = "level"
+LEADERBOARD_CAPABILITY_ID = "leaderboard"
 WEEKLY_CAPABILITY_ID = "weekly"
 RANKINGS_CAPABILITY_ID = "rankings"
 PROFILE_CAPABILITY_ID = "profile"
@@ -31,6 +32,16 @@ LEVEL_SPEC = CapabilitySpec(
     category="progression",
     slash_command="/level",
     tags=("level", "xp", "progression"),
+)
+
+LEADERBOARD_SPEC = CapabilitySpec(
+    capability_id=LEADERBOARD_CAPABILITY_ID,
+    name="レベルランキング",
+    description="全体のレベル・XPランキングTOP30を確認する",
+    risk=CapabilityRisk.READ_ONLY,
+    category="progression",
+    slash_command="/leaderboard",
+    tags=("leaderboard", "level", "xp", "ranking"),
 )
 
 WEEKLY_SPEC = CapabilitySpec(
@@ -88,6 +99,9 @@ class ProgressionDataSource(Protocol):
     async def get_level_info(self, user_id: int) -> dict[str, Any]:
         ...
 
+    async def get_leaderboard(self, limit: int):
+        ...
+
     async def get_weekly_xp_leaderboard(self, guild_id: int, limit: int):
         ...
 
@@ -142,6 +156,20 @@ async def level_handler(
 ) -> CapabilityResult:
     info = await data_source.get_level_info(context.user_id)
     return CapabilityResult(LEVEL_CAPABILITY_ID, True, value=info)
+
+
+async def leaderboard_handler(
+    data_source: ProgressionDataSource,
+    context: CapabilityContext,
+    *,
+    limit: int,
+) -> CapabilityResult:
+    rows = await data_source.get_leaderboard(limit)
+    return CapabilityResult(
+        LEADERBOARD_CAPABILITY_ID,
+        True,
+        value={"rows": rows},
+    )
 
 
 async def weekly_handler(
@@ -340,6 +368,7 @@ def build_progression_pilot_dispatcher(
     registry = CapabilityRegistry()
     for spec in (
         LEVEL_SPEC,
+        LEADERBOARD_SPEC,
         WEEKLY_SPEC,
         RANKINGS_SPEC,
         PROFILE_SPEC,
@@ -352,6 +381,13 @@ def build_progression_pilot_dispatcher(
 
     async def handle_level(context, arguments):
         return await level_handler(data_source, context)
+
+    async def handle_leaderboard(context, arguments):
+        return await leaderboard_handler(
+            data_source,
+            context,
+            limit=int(arguments["limit"]),
+        )
 
     async def handle_weekly(context, arguments):
         return await weekly_handler(
@@ -369,6 +405,7 @@ def build_progression_pilot_dispatcher(
         )
 
     dispatcher.register_handler(LEVEL_CAPABILITY_ID, handle_level)
+    dispatcher.register_handler(LEADERBOARD_CAPABILITY_ID, handle_leaderboard)
     dispatcher.register_handler(WEEKLY_CAPABILITY_ID, handle_weekly)
     async def handle_profile(context, arguments):
         return await profile_handler(
@@ -415,6 +452,20 @@ async def dispatch_level(
 ) -> CapabilityResult:
     return await dispatcher.dispatch(
         CapabilityRequest(LEVEL_CAPABILITY_ID),
+        _context(user_id=user_id, guild_id=guild_id, channel_id=channel_id),
+    )
+
+
+async def dispatch_leaderboard(
+    dispatcher: CapabilityDispatcher,
+    *,
+    user_id: int,
+    guild_id: int | None,
+    channel_id: int | None,
+    limit: int,
+) -> CapabilityResult:
+    return await dispatcher.dispatch(
+        CapabilityRequest(LEADERBOARD_CAPABILITY_ID, {"limit": limit}),
         _context(user_id=user_id, guild_id=guild_id, channel_id=channel_id),
     )
 
