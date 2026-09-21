@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import random
+
 from typing import Any, Protocol
 
 from services.capability_core import (
@@ -18,6 +21,7 @@ WEEKLY_CAPABILITY_ID = "weekly"
 RANKINGS_CAPABILITY_ID = "rankings"
 PROFILE_CAPABILITY_ID = "profile"
 ACHIEVEMENTS_CAPABILITY_ID = "achievements"
+FORTUNE_CAPABILITY_ID = "fortune"
 
 LEVEL_SPEC = CapabilitySpec(
     capability_id=LEVEL_CAPABILITY_ID,
@@ -69,6 +73,16 @@ ACHIEVEMENTS_SPEC = CapabilitySpec(
     tags=("achievements", "progression", "profile"),
 )
 
+FORTUNE_SPEC = CapabilitySpec(
+    capability_id=FORTUNE_CAPABILITY_ID,
+    name="今日の運勢",
+    description="今日の運勢を生成または確認する",
+    risk=CapabilityRisk.READ_ONLY,
+    category="progression",
+    slash_command="/fortune",
+    tags=("fortune", "daily", "progression"),
+)
+
 
 class ProgressionDataSource(Protocol):
     async def get_level_info(self, user_id: int) -> dict[str, Any]:
@@ -107,6 +121,17 @@ class ProgressionDataSource(Protocol):
         ...
 
     async def get_equipped_title(self, guild_id: int, user_id: int):
+        ...
+
+    async def get_today_fortune(self, guild_id: int, user_id: int):
+        ...
+
+    async def save_today_fortune(
+        self, guild_id: int, user_id: int, fortune_key: str, score: int
+    ):
+        ...
+
+    async def increment_fortune_count(self, guild_id: int, user_id: int):
         ...
 
 
@@ -246,6 +271,69 @@ async def achievements_handler(
     )
 
 
+async def fortune_handler(
+    data_source: ProgressionDataSource,
+    context: CapabilityContext,
+    *,
+    today: str,
+) -> CapabilityResult:
+    if context.guild_id is None:
+        raise ValueError("fortune requires guild_id")
+
+    existing = await data_source.get_today_fortune(
+        context.guild_id, context.user_id
+    )
+    is_new = existing is None
+
+    if existing:
+        fortune_key = existing[0]
+        score = int(existing[1])
+    else:
+        seed_text = (
+            f"{context.guild_id}:"
+            f"{context.user_id}:"
+            f"{today}:"
+            "akane-v33"
+        )
+        digest = hashlib.sha256(seed_text.encode("utf-8")).hexdigest()
+        rng = random.Random(int(digest[:16], 16))
+        score = rng.randint(1, 100)
+
+        if score >= 96:
+            fortune_key = "super_lucky"
+        elif score >= 81:
+            fortune_key = "great_lucky"
+        elif score >= 61:
+            fortune_key = "lucky"
+        elif score >= 41:
+            fortune_key = "small_lucky"
+        elif score >= 21:
+            fortune_key = "neutral"
+        else:
+            fortune_key = "careful"
+
+        await data_source.save_today_fortune(
+            context.guild_id,
+            context.user_id,
+            fortune_key,
+            score,
+        )
+        await data_source.increment_fortune_count(
+            context.guild_id,
+            context.user_id,
+        )
+
+    return CapabilityResult(
+        FORTUNE_CAPABILITY_ID,
+        True,
+        value={
+            "fortune_key": fortune_key,
+            "score": score,
+            "is_new": is_new,
+        },
+    )
+
+
 def build_progression_pilot_dispatcher(
     data_source: ProgressionDataSource,
 ) -> CapabilityDispatcher:
@@ -256,6 +344,7 @@ def build_progression_pilot_dispatcher(
         RANKINGS_SPEC,
         PROFILE_SPEC,
         ACHIEVEMENTS_SPEC,
+        FORTUNE_SPEC,
     ):
         registry.register(spec)
 
@@ -297,7 +386,15 @@ def build_progression_pilot_dispatcher(
 
     dispatcher.register_handler(RANKINGS_CAPABILITY_ID, handle_rankings)
     dispatcher.register_handler(PROFILE_CAPABILITY_ID, handle_profile)
+    async def handle_fortune(context, arguments):
+        return await fortune_handler(
+            data_source,
+            context,
+            today=str(arguments["today"]),
+        )
+
     dispatcher.register_handler(ACHIEVEMENTS_CAPABILITY_ID, handle_achievements)
+    dispatcher.register_handler(FORTUNE_CAPABILITY_ID, handle_fortune)
     return dispatcher
 
 
@@ -381,5 +478,19 @@ async def dispatch_achievements(
             ACHIEVEMENTS_CAPABILITY_ID,
             {"target_user_id": target_user_id},
         ),
+        _context(user_id=user_id, guild_id=guild_id, channel_id=channel_id),
+    )
+
+
+async def dispatch_fortune(
+    dispatcher: CapabilityDispatcher,
+    *,
+    user_id: int,
+    guild_id: int,
+    channel_id: int | None,
+    today: str,
+) -> CapabilityResult:
+    return await dispatcher.dispatch(
+        CapabilityRequest(FORTUNE_CAPABILITY_ID, {"today": today}),
         _context(user_id=user_id, guild_id=guild_id, channel_id=channel_id),
     )
