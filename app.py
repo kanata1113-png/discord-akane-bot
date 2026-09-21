@@ -13,7 +13,9 @@ from db_migrations import LATEST_SCHEMA_VERSION, run_migrations
 from repositories import RepositoryRegistry
 from runtime_preflight import validate_runtime_environment
 from services import ServiceRegistry
+from services.reaction_translation import ReactionTranslationService
 from views.event_view import EventView
+from views.reaction_translation_view import ReactionTranslationView
 from views.ticket_view import TicketCloseView, TicketView
 
 
@@ -50,6 +52,7 @@ class AkaneBot(commands.Bot):
             services=self.services,
         )
         self.ai = AiManager()
+        self.reaction_translation = ReactionTranslationService(self)
 
     async def setup_hook(self):
         logger.info("==============================================")
@@ -127,6 +130,7 @@ class AkaneBot(commands.Bot):
             self.add_view(EventView())
             self.add_view(TicketView(self))
             self.add_view(TicketCloseView(self))
+            self.add_view(ReactionTranslationView(self))
             logger.info("Persistent views loaded.")
         except Exception as error:
             logger.exception(f"Persistent views failed: {error}")
@@ -175,6 +179,7 @@ class AkaneBot(commands.Bot):
         logger.info("XP system: READY")
         logger.info("Spam protection: READY")
         logger.info("Ticket system: READY")
+        logger.info("Reaction translation: READY")
         logger.info("Achievements: READY")
         logger.info("Titles: READY")
         logger.info("Fortune: READY")
