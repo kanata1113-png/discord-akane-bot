@@ -59,7 +59,7 @@ def test_budget_controller_honors_detail_and_hard_cap():
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_build_plan_preserves_existing_route_budget_when_v2_disabled():
+async def test_orchestrator_applies_cost_output_budget_even_when_legacy_v2_controller_disabled():
     class FakeRouter:
         mode = "production"
         is_configured = True
@@ -90,5 +90,7 @@ async def test_orchestrator_build_plan_preserves_existing_route_budget_when_v2_d
     )
 
     assert plan.route.route == "reasoning"
-    assert plan.budget.max_output_tokens == plan.route.max_output_tokens
+    assert plan.budget.max_output_tokens == 1200
+    assert plan.budget.max_output_tokens < plan.route.max_output_tokens
+    assert plan.budget.reason == "output_budget_default"
     assert plan.intent.effective_pipeline == "general-chat"
