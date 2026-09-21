@@ -17,20 +17,20 @@ class DiscoverySelection(Protocol):
     capability_id: str
 
 
+COMMAND_ATTRIBUTE_BY_CAPABILITY_ID = {
+    "memory_status": "memory",
+}
+
+
 async def execute_discovery_selection(
     interaction: discord.Interaction,
     selection: DiscoverySelection,
 ) -> bool:
-    """Execute an explicitly selected, approved B2 capability.
+    """Execute an explicitly selected, approved discovery capability.
 
-    The existing GeneralCog slash-command callbacks remain the sole Discord
-    presentation adapters. They already dispatch through the progression
-    CapabilityDispatcher, so this path adds a new explicit-selection entry
-    point without duplicating domain logic or changing persistence semantics.
-
-    Returns False for every capability outside the approved pilot. That keeps
-    rankings (missing required category), fortune (first-read persistence),
-    unknown, moderation, and admin capabilities fail-closed.
+    Existing GeneralCog slash-command callbacks remain the Discord presentation
+    adapters. Capability IDs normally match command attribute names; explicit
+    aliases cover intentionally different runtime IDs such as memory_status.
     """
 
     capability_id = selection.capability_id
@@ -45,12 +45,16 @@ async def execute_discovery_selection(
         )
         return False
 
-    command = getattr(general_cog, capability_id, None)
+    command_name = COMMAND_ATTRIBUTE_BY_CAPABILITY_ID.get(
+        capability_id,
+        capability_id,
+    )
+    command = getattr(general_cog, command_name, None)
     callback = getattr(command, "callback", None)
     if callback is None:
         logger.error(
             "Discovery direct execution unavailable | callback missing | "
-            f"capability={capability_id}"
+            f"capability={capability_id} | command={command_name}"
         )
         return False
 
