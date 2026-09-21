@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import io
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import Literal, Optional, Union
 
@@ -22,6 +22,39 @@ logger = logging.getLogger("AkaneBot")
 EventChannel = Union[discord.VoiceChannel, discord.StageChannel]
 
 
+def _clean_search_text(text: str) -> str:
+    value = re.sub(r"\s+", " ", text or "").strip()
+    value = re.sub(r"[*_~`>#]+", "", value)
+    return value
+
+
+def _search_snippet(text: str, keyword: str, *, limit: int = 58) -> str:
+    """Return a compact query-relevant local snippet without external AI cost."""
+
+    clean = _clean_search_text(text)
+    if not clean:
+        return "（本文なし）"
+    if len(clean) <= limit:
+        return clean
+
+    folded = clean.casefold()
+    needle = (keyword or "").strip().casefold()
+    index = folded.find(needle) if needle else -1
+    if index < 0:
+        return clean[: limit - 1] + "…"
+
+    half = max(12, limit // 2)
+    start = max(0, index - half)
+    end = min(len(clean), start + limit)
+    start = max(0, end - limit)
+    snippet = clean[start:end]
+    if start > 0:
+        snippet = "…" + snippet[1:]
+    if end < len(clean):
+        snippet = snippet[:-1] + "…"
+    return snippet
+
+
 class GeneralCog(ReleaseDGeneralCog):
     def __init__(self, bot):
         super().__init__(bot)
@@ -34,10 +67,11 @@ class GeneralCog(ReleaseDGeneralCog):
             channel = interaction.guild.get_channel(target_channel_id) or channel
         after = datetime.now(pytz.utc) - timedelta(days=days) if days else None
         found = []
+        needle = keyword.casefold()
         async for message in channel.history(limit=1000, after=after):
             if target_user_id is not None and message.author.id != target_user_id:
                 continue
-            if keyword in message.content:
+            if needle in (message.content or "").casefold():
                 found.append(message)
                 if len(found) >= 100:
                     break
@@ -190,11 +224,30 @@ class GeneralCog(ReleaseDGeneralCog):
             await interaction.followup.send("検索中にエラーが起きたで。", ephemeral=True)
             return
         if not found:
-            await interaction.followup.send("見つからへんかったで。", ephemeral=True)
+            await interaction.followup.send("🔎 見つからへんかったで。検索語を少し変えてみてな。", ephemeral=True)
             return
-        if len(found) > 20:
-            text = "\n".join(f"[{message.created_at}] {message.author}: {message.content}" for message in found)
-            await interaction.followup.send(f"{len(found)}件", file=discord.File(io.BytesIO(text.encode("utf-8")), filename="result.txt"), ephemeral=True)
-            return
-        description = "\n".join(f"• [{message.content[:30]}]({message.jump_url})" for message in found)
-        await interaction.followup.send(embed=discord.Embed(title=f"検索: {keyword}", description=description), ephemeral=True)
+
+        shown = found[:10]
+        embed = discord.Embed(
+            title=f"🔎 検索: {discord.utils.escape_markdown(keyword)}",
+            description="検索語に近い部分だけ短く表示してるで。",
+            color=discord.Color.blue(),
+        )
+        for index, message in enumerate(shown, start=1):
+            author_name = discord.utils.escape_markdown(
+                getattr(message.author, "display_name", str(message.author))
+            )
+            snippet = discord.utils.escape_markdown(
+                _search_snippet(message.content, keyword)
+            )
+            timestamp = int(message.created_at.timestamp())
+            embed.add_field(
+                name=f"{index}. 👤 {author_name}",
+                value=(
+                    f"📝 {snippet}\n"
+                    f"🕐 <t:{timestamp}:R> · [元メッセージ]({message.jump_url})"
+                ),
+                inline=False,
+            )
+        embed.set_footer(text=f"{len(found)}件中 {len(shown)}件を表示")
+        await interaction.followup.send(embed=embed, ephemeral=True)
