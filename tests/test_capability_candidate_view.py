@@ -84,12 +84,15 @@ def test_panel_caps_candidate_buttons_at_four_and_contains_no_dispatcher():
     assert not hasattr(view, "handler")
 
 
-def test_panel_copy_explains_approved_reads_execute_after_selection():
+def test_panel_copy_is_user_facing_and_reassures_before_action():
     text = candidate_panel_text(
         (candidate("weekly", "今週のXPランキング", "/weekly"),)
     )
 
-    assert "選択後にそのまま実行" in text
+    assert "🔎" in text
+    assert "安心して" in text
+    assert "キャンセル" in text
+    assert "読み取り機能" not in text
 
 
 def test_buttons_are_existing_capability_metadata_only():
