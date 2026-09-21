@@ -32,6 +32,7 @@ class CapabilityCandidateView(discord.ui.View):
         super().__init__(timeout=timeout)
         self.requester_id = requester_id
         self.selection: CandidateSelection | None = None
+        self.cancelled = False
 
         for candidate in tuple(candidates)[:4]:
             button = discord.ui.Button(
@@ -49,6 +50,20 @@ class CapabilityCandidateView(discord.ui.View):
 
             button.callback = callback
             self.add_item(button)
+
+        cancel_button = discord.ui.Button(
+            label="キャンセル",
+            style=discord.ButtonStyle.secondary,
+            custom_id="cap_discovery:cancel",
+        )
+
+        async def cancel_callback(
+            interaction: discord.Interaction,
+        ) -> None:
+            await self._cancel(interaction)
+
+        cancel_button.callback = cancel_callback
+        self.add_item(cancel_button)
 
     async def interaction_check(
         self,
@@ -82,6 +97,25 @@ class CapabilityCandidateView(discord.ui.View):
                 f"選択: **{candidate.name}**\n"
                 f"使うコマンドは `{command}` やで。"
                 "\n※ まだ自動実行はしてへんで。"
+            ),
+            view=self,
+        )
+        self.stop()
+
+    async def _cancel(
+        self,
+        interaction: discord.Interaction,
+    ) -> None:
+        self.cancelled = True
+        self.selection = None
+
+        for item in self.children:
+            item.disabled = True
+
+        await interaction.response.edit_message(
+            content=(
+                "キャンセル済みやで。\n"
+                "このメッセージの処理はここで終了したで。"
             ),
             view=self,
         )
