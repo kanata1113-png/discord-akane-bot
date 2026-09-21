@@ -91,6 +91,13 @@ def shortlist_capabilities(
             )
         )
         matched = tuple(term for term in terms if term in text)
+        semantic_matches = []
+        if (
+            spec.capability_id == "rankings"
+            and ("ランキング" in text or "順位" in text)
+        ):
+            semantic_matches.append("ランキング")
+        matched = tuple(dict.fromkeys((*matched, *semantic_matches)))
         if not matched:
             continue
 
