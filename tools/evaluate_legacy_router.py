@@ -18,7 +18,8 @@ CASES = [
     ("この言葉の意味を簡単に教えて", "normal-chat"),
     ("メリットとデメリットを比較して", "reasoning"),
     ("原因と結果を分析して", "reasoning"),
-    ("複数の観点から考えて", "reasoning"),
+    # "複数の観点" is intentionally a deep-reasoning keyword in v1.0.
+    ("複数の観点から考えて", "deep-reasoning"),
     ("表現の自由について教えて", "regulation"),
     ("検閲の問題点を説明して", "regulation"),
     ("体系的に深く分析して", "deep-reasoning"),
