@@ -15,18 +15,31 @@ class PromotionDecision:
 class SolPromotionGate:
     """Require explicit deep-complexity evidence before allowing Sol."""
 
-    EXPLICIT = ("徹底的に", "厳密に", "深掘り", "複数の観点", "体系的に", "詳細に分析")
+    EXPLICIT = (
+        "徹底的に",
+        "厳密に",
+        "深掘り",
+        "複数の観点",
+        "多角的に",
+        "体系的に",
+        "詳細に分析",
+    )
     COMPLEX = ("比較", "反論", "複数", "制約", "判例", "根拠", "トレードオフ")
 
     @classmethod
     def apply(cls, selection: RouteSelection, content: str) -> tuple[RouteSelection, PromotionDecision]:
         if selection.model != Config.REASONING_MODEL:
             return selection, PromotionDecision(False, "not_sol_candidate")
+
         text = (content or "").strip()
-        explicit = any(x in text for x in cls.EXPLICIT)
-        complexity = sum(1 for x in cls.COMPLEX if x in text)
-        if explicit and (complexity >= 1 or len(text) >= 120):
+        explicit_hits = sum(1 for marker in cls.EXPLICIT if marker in text)
+        complexity_hits = sum(1 for marker in cls.COMPLEX if marker in text)
+
+        if explicit_hits >= 2 or (
+            explicit_hits >= 1 and (complexity_hits >= 1 or len(text) >= 120)
+        ):
             return selection, PromotionDecision(True, "explicit_deep_complexity")
+
         return replace(
             selection,
             model=Config.CHAT_MODEL,
