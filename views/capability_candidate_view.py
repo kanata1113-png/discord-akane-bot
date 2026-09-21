@@ -50,6 +50,14 @@ class CapabilityCandidateView(discord.ui.View):
             button.callback = callback
             self.add_item(button)
 
+        cancel_button = discord.ui.Button(
+            label="キャンセル",
+            style=discord.ButtonStyle.danger,
+            custom_id="cap_discovery:cancel",
+        )
+        cancel_button.callback = self._cancel
+        self.add_item(cancel_button)
+
     async def interaction_check(
         self,
         interaction: discord.Interaction,
@@ -62,6 +70,19 @@ class CapabilityCandidateView(discord.ui.View):
             ephemeral=True,
         )
         return False
+
+    async def _cancel(
+        self,
+        interaction: discord.Interaction,
+    ) -> None:
+        for item in self.children:
+            item.disabled = True
+
+        await interaction.response.edit_message(
+            content="キャンセルしたで。このやりとりはここで終了や。",
+            view=self,
+        )
+        self.stop()
 
     async def _select(
         self,
