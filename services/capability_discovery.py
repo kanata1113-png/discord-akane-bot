@@ -100,6 +100,10 @@ def shortlist_capabilities(
         )
         if spec.name.lower() in text:
             score += 2.0
+        if spec.capability_id == "weekly" and (
+            "今週" in text or "週間" in text
+        ):
+            score += 3.0
 
         ranked.append(
             DiscoveryCandidate(
