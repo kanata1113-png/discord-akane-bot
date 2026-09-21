@@ -6,6 +6,7 @@ import logging
 from openai import AsyncOpenAI
 
 from config import Config
+from services.response_guard import ResponseGuard
 
 
 logger = logging.getLogger("AkaneBot")
@@ -27,12 +28,7 @@ class AIExecutor:
         history=None,
         reasoning_effort: str = "low",
     ) -> str:
-        input_messages = [
-            {
-                "role": "system",
-                "content": system,
-            }
-        ]
+        input_messages = [{"role": "system", "content": system}]
 
         if history:
             for item in history:
@@ -40,19 +36,9 @@ class AIExecutor:
                 content = item.get("content", "")
                 if role not in {"user", "assistant"} or not content:
                     continue
-                input_messages.append(
-                    {
-                        "role": role,
-                        "content": content,
-                    }
-                )
+                input_messages.append({"role": role, "content": content})
 
-        input_messages.append(
-            {
-                "role": "user",
-                "content": user,
-            }
-        )
+        input_messages.append({"role": "user", "content": user})
 
         try:
             response = await asyncio.wait_for(
@@ -67,16 +53,20 @@ class AIExecutor:
 
             text = (response.output_text or "").strip()
             status = getattr(response, "status", None)
-            incomplete_details = getattr(
-                response,
-                "incomplete_details",
-                None,
-            )
-            incomplete_reason = getattr(
-                incomplete_details,
-                "reason",
-                None,
-            )
+            incomplete_details = getattr(response, "incomplete_details", None)
+            incomplete_reason = getattr(incomplete_details, "reason", None)
+
+            check = ResponseGuard.check(text, incomplete=status == "incomplete")
+            if not check.ok:
+                logger.warning(
+                    "AI response guard | reason=%s | model=%s | effort=%s | "
+                    "status=%s | max_output_tokens=%s",
+                    check.reason,
+                    model,
+                    reasoning_effort,
+                    status,
+                    max_tokens,
+                )
 
             if status == "incomplete":
                 logger.warning(
