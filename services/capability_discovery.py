@@ -3,74 +3,26 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
-from services.capability_core import CapabilitySpec
+from services.capability_core import CapabilityRisk, CapabilitySpec
 from services.write_intent_discovery import discover_write_intent
 
 
 ACTION_VERBS = (
-    "見たい",
-    "確認",
-    "表示",
-    "見せて",
-    "知りたい",
-    "占いたい",
-    "して",
-    "してほしい",
-    "使いたい",
-    "調べたい",
-    "変更",
-    "変えて",
-    "設定",
-    "削除",
-    "消して",
-    "忘れて",
-    "登録",
-    "作って",
-    "追加",
+    "見たい", "確認", "表示", "見せて", "知りたい", "占いたい",
+    "して", "してほしい", "使いたい", "調べたい", "変更", "変えて",
+    "設定", "削除", "消して", "忘れて", "登録", "作って", "追加",
 )
 
 CAPABILITY_MARKERS = (
-    "ランキング",
-    "順位",
-    "レベル",
-    "xp",
-    "プロフィール",
-    "実績",
-    "運勢",
-    "占い",
-    "称号",
-    "メモリー",
-    "記憶",
-    "履歴",
-    "リマインダー",
-    "翻訳",
-    "要約",
-    "辞書",
-    "rank",
-    "level",
-    "profile",
-    "achievement",
-    "fortune",
-    "title",
-    "memory",
-    "remind",
-    "reminder",
-    "translate",
-    "summary",
-    "define",
+    "ランキング", "順位", "レベル", "xp", "プロフィール", "実績", "運勢",
+    "占い", "称号", "メモリー", "記憶", "履歴", "リマインダー", "翻訳",
+    "要約", "辞書", "rank", "level", "profile", "achievement", "fortune",
+    "title", "memory", "remind", "reminder", "translate", "summary", "define",
 )
 
 CHAT_INTENT_MARKERS = (
-    "どう思う",
-    "なぜ",
-    "なんで",
-    "理由",
-    "分析",
-    "比較して",
-    "意味",
-    "とは",
-    "について",
-    "教えて",
+    "どう思う", "なぜ", "なんで", "理由", "分析", "比較して", "意味",
+    "とは", "について", "教えて",
 )
 
 
@@ -92,17 +44,15 @@ class DiscoveryDecision:
 
 
 def should_attempt_discovery(content: str) -> bool:
-    """Cheap local gate. False means ordinary chat continues unchanged."""
-
     text = (content or "").strip().lower()
     if not text or len(text) > 180:
         return False
     if any(marker in text for marker in CHAT_INTENT_MARKERS):
         return False
-
-    has_capability = any(marker in text for marker in CAPABILITY_MARKERS)
-    has_action = any(marker in text for marker in ACTION_VERBS)
-    return has_capability and has_action
+    return (
+        any(marker in text for marker in CAPABILITY_MARKERS)
+        and any(marker in text for marker in ACTION_VERBS)
+    )
 
 
 def shortlist_capabilities(
@@ -111,8 +61,6 @@ def shortlist_capabilities(
     *,
     limit: int = 4,
 ) -> tuple[DiscoveryCandidate, ...]:
-    """Rank discoverable capabilities locally before any optional Jev call."""
-
     text = (content or "").strip().lower()
     ranked: list[DiscoveryCandidate] = []
     write_intent = discover_write_intent(text)
@@ -137,14 +85,19 @@ def shortlist_capabilities(
         if not spec.discoverable:
             continue
 
+        # WRITE_CONFIRM candidates may participate only when the dedicated local
+        # write-intent gate resolved that exact capability. This prevents broad
+        # nouns such as "称号" or "記憶" from stealing read-only requests.
+        if spec.risk is CapabilityRisk.WRITE_CONFIRM and (
+            not write_intent.should_route
+            or write_intent.capability_id != spec.capability_id
+        ):
+            continue
+
         terms = tuple(
             dict.fromkeys(
                 term.strip().lower()
-                for term in (
-                    spec.capability_id,
-                    spec.name,
-                    *spec.tags,
-                )
+                for term in (spec.capability_id, spec.name, *spec.tags)
                 if term and term.strip()
             )
         )
