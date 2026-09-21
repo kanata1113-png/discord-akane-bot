@@ -29,14 +29,21 @@ EXTENSIONS = (
 )
 
 
+def build_discord_intents() -> discord.Intents:
+    """Return only the Discord intents used by Akane's current feature set."""
+    intents = discord.Intents.default()
+    intents.members = True
+    intents.message_content = True
+    intents.reactions = True
+    return intents
+
+
 class AkaneBot(commands.Bot):
 
     def __init__(self):
-        intents = discord.Intents.all()
-
         super().__init__(
             command_prefix="!",
-            intents=intents,
+            intents=build_discord_intents(),
             help_command=None,
         )
 
