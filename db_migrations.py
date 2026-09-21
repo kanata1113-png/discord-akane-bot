@@ -127,14 +127,81 @@ async def _validate_baseline_schema(db: aiosqlite.Connection) -> None:
 
 
 async def _baseline_v34_schema(db: aiosqlite.Connection) -> None:
-    """Adopt the already-deployed v34 schema without rewriting user data.
-
-    DatabaseManager.init() remains responsible for creating the current baseline
-    tables in Phase 3. The baseline is recorded only after the existing schema
-    has been validated. Future schema changes are added as numbered migrations.
-    """
+    """Adopt the already-deployed v34 schema without rewriting user data."""
 
     await _validate_baseline_schema(db)
+
+
+async def _column_names(db: aiosqlite.Connection, table: str) -> set[str]:
+    cursor = await db.execute(f'PRAGMA table_info("{table}")')
+    return {str(row[1]) for row in await cursor.fetchall()}
+
+
+async def _native_ticket_v4(db: aiosqlite.Connection) -> None:
+    """Extend legacy tickets in-place for the Akane-native Ticket workflow.
+
+    Existing rows and channel IDs are preserved. ALTER TABLE is used only for
+    additive nullable columns so rollback/failure never recreates the database.
+    """
+
+    columns = await _column_names(db, "tickets")
+    additions = (
+        ("ticket_number", "INTEGER"),
+        ("subject", "TEXT"),
+        ("description", "TEXT"),
+        ("assigned_staff_id", "INTEGER"),
+        ("updated_at", "TEXT"),
+    )
+    for name, sql_type in additions:
+        if name not in columns:
+            await db.execute(f"ALTER TABLE tickets ADD COLUMN {name} {sql_type}")
+
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ticket_settings (
+            guild_id INTEGER PRIMARY KEY,
+            category_id INTEGER,
+            staff_role_id INTEGER,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ticket_counters (
+            guild_id INTEGER PRIMARY KEY,
+            next_number INTEGER NOT NULL DEFAULT 1
+        )
+        """
+    )
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ticket_members (
+            ticket_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            added_at TEXT NOT NULL,
+            PRIMARY KEY (ticket_id, user_id)
+        )
+        """
+    )
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ticket_audit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticket_id INTEGER NOT NULL,
+            actor_id INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            detail TEXT,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ticket_number ON tickets (guild_id, ticket_number)"
+    )
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ticket_audit_ticket ON ticket_audit (ticket_id, id)"
+    )
 
 
 MIGRATIONS = (
@@ -142,6 +209,11 @@ MIGRATIONS = (
         version=1,
         name="baseline_v34_schema",
         apply=_baseline_v34_schema,
+    ),
+    Migration(
+        version=2,
+        name="native_ticket_v4",
+        apply=_native_ticket_v4,
     ),
 )
 
