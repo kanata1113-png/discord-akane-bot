@@ -370,6 +370,9 @@ class AdminCommands(app_commands.Group):
         usage = telemetry.summary(since=since) if telemetry else {
             "requests": 0, "input_tokens": 0, "output_tokens": 0,
         }
+        previous_usage = telemetry.previous_month_summary() if telemetry else {
+            "requests": 0, "input_tokens": 0, "output_tokens": 0,
+        }
         routes = routing.summary(since=since) if routing else {
             "requests": 0, "by_model": {}, "jev_decisions": 0, "fallbacks": 0,
             "low_confidence": 0, "jev_errors": 0, "avg_jev_latency_ms": 0.0,
@@ -404,6 +407,30 @@ class AdminCommands(app_commands.Group):
                 f"Requests **{usage['requests']:,}**\n"
                 f"Input **{usage['input_tokens']:,}** / Output **{usage['output_tokens']:,}** tokens\n"
                 f"Total **{usage['input_tokens'] + usage['output_tokens']:,}** tokens"
+            ), inline=False,
+        )
+        current_ratio = usage["input_tokens"] / usage["output_tokens"] if usage["output_tokens"] else 0.0
+        previous_ratio = (
+            previous_usage["input_tokens"] / previous_usage["output_tokens"]
+            if previous_usage["output_tokens"] else 0.0
+        )
+        avg_input = usage["input_tokens"] / usage["requests"] if usage["requests"] else 0.0
+        avg_output = usage["output_tokens"] / usage["requests"] if usage["requests"] else 0.0
+        if previous_ratio > 0:
+            ratio_change = (current_ratio / previous_ratio - 1) * 100
+            efficiency_status = "⚠️ WATCH" if ratio_change >= 50 else "✅ STABLE"
+            baseline_line = f"Previous month **{previous_ratio:.1f}×** · Change **{ratio_change:+.1f}%**"
+        else:
+            efficiency_status = "⏳ COLLECTING BASELINE"
+            baseline_line = "Previous month **no baseline yet**"
+
+        embed.add_field(
+            name="⚡ TOKEN EFFICIENCY",
+            value=(
+                f"Input / Output **{current_ratio:.1f}×**\n"
+                f"Avg Input/request **{avg_input:,.0f}** · Output **{avg_output:,.0f}**\n"
+                f"{baseline_line}\n"
+                f"Efficiency **{efficiency_status}**"
             ), inline=False,
         )
         embed.add_field(
