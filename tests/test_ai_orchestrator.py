@@ -36,9 +36,9 @@ async def test_orchestrator_coordinates_route_prompt_and_execution():
     )
 
     assert reply == "ok"
-    assert model == Config.REASONING_MODEL
+    assert model == Config.CHAT_MODEL
     assert route == "reasoning"
-    assert captured["model"] == Config.REASONING_MODEL
+    assert captured["model"] == Config.CHAT_MODEL
     assert captured["history"] == [{"role": "user", "content": "previous"}]
 
 
@@ -71,3 +71,12 @@ async def test_orchestrator_preserves_regulation_prompt_independent_of_route():
     )
 
     assert "【表現の自由・規制関連】" in captured["system"]
+    assert captured["model"] == Config.FAST_MODEL
+
+
+def test_cost_routing_model_tiers():
+    assert RoutingPolicy.tier_for_route("normal-chat").model == Config.FAST_MODEL
+    assert RoutingPolicy.tier_for_route("reasoning").model == Config.CHAT_MODEL
+    assert RoutingPolicy.tier_for_route("regulation").model == Config.CHAT_MODEL
+    assert RoutingPolicy.tier_for_route("long-question").model == Config.CHAT_MODEL
+    assert RoutingPolicy.tier_for_route("deep-reasoning").model == Config.REASONING_MODEL
