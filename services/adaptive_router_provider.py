@@ -19,12 +19,7 @@ class AdaptiveRouteDecision:
 
 
 class AdaptiveRouterProvider:
-    """Feature-gated provider decorator for route-specific acceptance policy.
-
-    The wrapped provider still owns route classification and transport. This
-    decorator only controls confidence acceptance; with the controller disabled
-    it preserves the provider's `accepted` decision exactly.
-    """
+    """Feature-gated provider decorator for route-specific acceptance policy."""
 
     def __init__(
         self,
@@ -38,6 +33,18 @@ class AdaptiveRouterProvider:
     @property
     def is_configured(self) -> bool:
         return self.provider.is_configured
+
+    @property
+    def confidence_threshold(self) -> float:
+        return float(getattr(self.provider, "confidence_threshold", 0.85))
+
+    @property
+    def timeout_seconds(self) -> float:
+        return float(getattr(self.provider, "timeout_seconds", 1.5))
+
+    @property
+    def adaptive_policy_enabled(self) -> bool:
+        return self.controller.enabled
 
     async def route(self, content: str) -> AdaptiveRouteDecision:
         decision = await self.provider.route(content)
