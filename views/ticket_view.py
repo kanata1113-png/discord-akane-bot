@@ -12,7 +12,7 @@ from views.write_capability_view import ConfirmActionView, RequesterOnlyView
 
 logger = logging.getLogger("AkaneBot")
 
-TICKET_CATEGORY_NAME = "🎫｜お問い合わせ"
+TICKET_CATEGORY_NAME = "🆘｜HELP_DESK"
 CATEGORY_LABELS = {
     "admin": ("管理者への相談", "🛡️"),
     "bot": ("Botの不具合", "🤖"),
