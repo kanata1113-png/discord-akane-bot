@@ -11,6 +11,8 @@ class QualityCostCase:
     latency_ms: int
     cost_units: float
     human_quality: float | None = None
+    expected_reasoning_effort: str | None = None
+    actual_reasoning_effort: str | None = None
 
 
 @dataclass(frozen=True)
@@ -25,12 +27,18 @@ class QualityCostResult:
 def evaluate(case: QualityCostCase) -> QualityCostResult:
     """Return transparent components instead of inventing a single magic score.
 
+    GPT-6 Luna serves both LIGHT and NORMAL tiers, so model equality alone is
+    insufficient when an expected reasoning effort is supplied. Legacy cases
+    without effort metadata remain backward-compatible and compare model only.
     Human quality remains optional and is never inferred from cost or latency.
-    This keeps benchmark decisions auditable and prevents cheap-but-bad answers
-    from being treated as automatically superior.
     """
+    effort_match = (
+        True
+        if case.expected_reasoning_effort is None
+        else case.expected_reasoning_effort == case.actual_reasoning_effort
+    )
     return QualityCostResult(
-        route_match=case.expected_model == case.actual_model,
+        route_match=(case.expected_model == case.actual_model and effort_match),
         completion_score=1.0 if case.completed else 0.0,
         human_quality=case.human_quality,
         latency_ms=max(0, int(case.latency_ms)),
