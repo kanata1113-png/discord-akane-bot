@@ -57,13 +57,13 @@ class RouteSelection:
 class RoutingPolicy:
     """Single chat-routing policy with safe Legacy fallback.
 
-    Cost-routing v0.1 uses a three-tier model policy:
-    - normal-chat -> Luna (default)
-    - reasoning/regulation/long-question -> Terra (standard work)
-    - deep-reasoning -> Sol (explicit promotion)
+    GPT-6 routing uses three effort tiers across two models:
+    - normal-chat -> Luna / low
+    - reasoning/regulation/long-question -> Luna / high
+    - deep-reasoning -> Sol / medium
 
-    The routing labels are preserved so Jev, continuity, telemetry, and replay
-    remain backward-compatible while model assignment becomes cost-aware.
+    Route labels remain stable so Jev, continuity, telemetry, and replay stay
+    backward-compatible even though light and standard work now share Luna.
     """
 
     def __init__(

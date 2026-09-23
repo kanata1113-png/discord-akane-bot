@@ -86,9 +86,15 @@ def test_cost_routing_model_tiers():
 
 
 def test_response_length_targets_follow_model_tiers():
-    assert PromptBuilder.response_length_target(Config.FAST_MODEL) == 420
-    assert PromptBuilder.response_length_target(Config.CHAT_MODEL) == 840
-    assert PromptBuilder.response_length_target(Config.REASONING_MODEL) == 1680
+    assert PromptBuilder.response_length_target(
+        Config.FAST_MODEL, Config.FAST_REASONING_EFFORT
+    ) == 420
+    assert PromptBuilder.response_length_target(
+        Config.CHAT_MODEL, Config.CHAT_REASONING_EFFORT
+    ) == 840
+    assert PromptBuilder.response_length_target(
+        Config.REASONING_MODEL, Config.DEEP_REASONING_EFFORT
+    ) == 1680
 
 
 def test_response_style_uses_compact_discord_markdown():

@@ -65,7 +65,7 @@ class AkaneBot(commands.Bot):
         logger.info("==============================================")
         logger.info("Akane Bot AI Platform v3.1 starting...")
         logger.info(f"Database path: {Config.DB_NAME}")
-        logger.info("GPT-5.6 routing tiers:")
+        logger.info("GPT-6 routing tiers:")
         logger.info(
             f"  Normal chat: {Config.FAST_MODEL} "
             f"[{Config.FAST_REASONING_EFFORT}]"
