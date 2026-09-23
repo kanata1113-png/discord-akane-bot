@@ -57,9 +57,13 @@ class CostTelemetry:
         events = self.snapshot()
         if since is not None:
             events = [e for e in events if datetime.fromisoformat(e.created_at or datetime.now(timezone.utc).isoformat()) >= since]
-        by_model = {Config.FAST_MODEL: 0, Config.CHAT_MODEL: 0, Config.REASONING_MODEL: 0}
-        for event in events:
-            by_model[event.model] = by_model.get(event.model, 0) + 1
+        # GPT-6 light and standard tiers intentionally share Luna, so route
+        # class—not model name—must distinguish their operational usage.
+        light_routes = {"normal-chat"}
+        standard_routes = {"reasoning", "regulation", "long-question"}
+        luna_low = sum(1 for e in events if e.route in light_routes and e.model == Config.FAST_MODEL)
+        luna_high = sum(1 for e in events if e.route in standard_routes and e.model == Config.CHAT_MODEL)
+        sol = sum(1 for e in events if e.model == Config.REASONING_MODEL)
         total = len(events)
         input_tokens = sum(e.input_tokens for e in events)
         output_tokens = sum(e.output_tokens for e in events)
@@ -68,12 +72,14 @@ class CostTelemetry:
         latencies = [e.latency_ms for e in events if e.latency_ms is not None]
         return {
             "requests": total,
-            "luna": by_model.get(Config.FAST_MODEL, 0),
-            "terra": by_model.get(Config.CHAT_MODEL, 0),
-            "sol": by_model.get(Config.REASONING_MODEL, 0),
-            "luna_rate": round(by_model.get(Config.FAST_MODEL, 0) / total * 100, 1) if total else 0.0,
-            "terra_rate": round(by_model.get(Config.CHAT_MODEL, 0) / total * 100, 1) if total else 0.0,
-            "sol_rate": round(by_model.get(Config.REASONING_MODEL, 0) / total * 100, 1) if total else 0.0,
+            "luna": luna_low + luna_high,
+            "luna_low": luna_low,
+            "luna_high": luna_high,
+            "sol": sol,
+            "luna_rate": round((luna_low + luna_high) / total * 100, 1) if total else 0.0,
+            "luna_low_rate": round(luna_low / total * 100, 1) if total else 0.0,
+            "luna_high_rate": round(luna_high / total * 100, 1) if total else 0.0,
+            "sol_rate": round(sol / total * 100, 1) if total else 0.0,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "cached_tokens": cached_tokens,
