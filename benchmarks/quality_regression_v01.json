@@ -1,7 +1,7 @@
 [
-  {"id":"casual","prompt":"こんにちは、今日は何してた？","expected_tier":"luna","detail":"default"},
-  {"id":"definition","prompt":"自由主義とは何？","expected_tier":"luna","detail":"default"},
-  {"id":"compact","prompt":"AI規制の論点を箇条書きで簡潔に","expected_tier":"terra","detail":"compact"},
-  {"id":"comparison","prompt":"SNSの実名制のメリットとデメリットを比較して","expected_tier":"terra","detail":"default"},
-  {"id":"deep","prompt":"量子コンピュータについて複数の観点から厳密に比較し、根拠も含めて詳細に分析して","expected_tier":"sol","detail":"expanded"}
+  {"id":"casual","prompt":"こんにちは、今日は何してた？","expected_tier":"luna-low","detail":"default"},
+  {"id":"definition","prompt":"自由主義とは何？","expected_tier":"luna-low","detail":"default"},
+  {"id":"compact","prompt":"AI規制の論点を箇条書きで簡潔に","expected_tier":"luna-high","detail":"compact"},
+  {"id":"comparison","prompt":"SNSの実名制のメリットとデメリットを比較して","expected_tier":"luna-high","detail":"default"},
+  {"id":"deep","prompt":"量子コンピュータについて複数の観点から厳密に比較し、根拠も含めて詳細に分析して","expected_tier":"sol-medium","detail":"expanded"}
 ]
