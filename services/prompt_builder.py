@@ -7,20 +7,32 @@ class PromptBuilder:
     """Builds prompts without deciding which model executes them."""
 
     RESPONSE_LENGTH_TARGETS = {
-        Config.FAST_MODEL: 420,
-        Config.CHAT_MODEL: 840,
-        Config.REASONING_MODEL: 1680,
+        (Config.FAST_MODEL, Config.FAST_REASONING_EFFORT): 420,
+        (Config.CHAT_MODEL, Config.CHAT_REASONING_EFFORT): 840,
+        (Config.REASONING_MODEL, Config.DEEP_REASONING_EFFORT): 1680,
     }
 
     @classmethod
-    def response_length_target(cls, model: str | None) -> int:
+    def response_length_target(
+        cls,
+        model: str | None,
+        reasoning_effort: str | None = None,
+    ) -> int:
         """Return the everyday answer-length target in Japanese characters.
 
         The target is a soft prompt-level budget, not a destructive post-generation
         truncation limit. Unknown/omitted models fail toward the shortest everyday
         profile so compatibility callers remain cost-conscious.
         """
-        return cls.RESPONSE_LENGTH_TARGETS.get(model, 420)
+        if model == Config.REASONING_MODEL:
+            effort = reasoning_effort or Config.DEEP_REASONING_EFFORT
+        elif reasoning_effort is None:
+            # Shared GPT-6 Luna model names are ambiguous without effort.
+            # Compatibility callers fail toward the cheaper light profile.
+            effort = Config.FAST_REASONING_EFFORT
+        else:
+            effort = reasoning_effort
+        return cls.RESPONSE_LENGTH_TARGETS.get((model, effort), 420)
 
     @classmethod
     def response_style_prompt(cls, model: str | None, *, detail_level: str = "default", target_characters: int | None = None) -> str:
