@@ -35,8 +35,8 @@ class FollowupDowngradePolicy:
                 route="reasoning",
                 max_output_tokens=min(selection.max_output_tokens, Config.REASONING_MAX_TOKENS),
                 fallback_reason="light_followup_downgrade",
-            ), FollowupDowngradeDecision(True, "sol_to_terra")
-        if selection.model == Config.CHAT_MODEL and selection.route != "regulation":
+            ), FollowupDowngradeDecision(True, "sol_to_luna_high")
+        if selection.route in {"reasoning", "long-question"}:
             return replace(
                 selection,
                 model=Config.FAST_MODEL,
@@ -44,5 +44,5 @@ class FollowupDowngradePolicy:
                 route="normal-chat",
                 max_output_tokens=min(selection.max_output_tokens, Config.NORMAL_CHAT_MAX_TOKENS),
                 fallback_reason="light_followup_downgrade",
-            ), FollowupDowngradeDecision(True, "terra_to_luna")
+            ), FollowupDowngradeDecision(True, "luna_high_to_luna_low")
         return selection, FollowupDowngradeDecision(False, "already_lowest")
