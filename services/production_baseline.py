@@ -21,7 +21,7 @@ EXPECTED_PRIVILEGED_MUTATIONS = 14
 ADMIN_READ_ONLY_SLASH_PATHS = frozenset(
     {
         "/admin status",
-        "/admin ai_cost",
+        "/admin ai_usagedashboard",
         "/admin level_reward_list",
     }
 )

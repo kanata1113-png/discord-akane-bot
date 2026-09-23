@@ -26,7 +26,16 @@ class AIExecutor:
         value = getattr(usage, name, 0) if usage is not None else 0
         return int(value or 0)
 
-    def _record_usage(self, response, *, model: str, route: str, latency_ms: int, completed: bool) -> None:
+    def _record_usage(
+        self,
+        response,
+        *,
+        model: str,
+        route: str,
+        reasoning_effort: str,
+        latency_ms: int,
+        completed: bool,
+    ) -> None:
         usage = getattr(response, "usage", None)
         input_tokens = self._usage_value(usage, "input_tokens")
         output_tokens = self._usage_value(usage, "output_tokens")
@@ -43,8 +52,15 @@ class AIExecutor:
             total_tokens=total_tokens,
             cached_tokens=cached,
             reasoning_tokens=reasoning,
+            reasoning_effort=reasoning_effort,
             latency_ms=latency_ms,
-            estimated_cost_units=CostTelemetry.estimate_actual_units(model, input_tokens, output_tokens),
+            estimated_cost_units=CostTelemetry.estimate_actual_units(
+                model,
+                input_tokens,
+                output_tokens,
+                route=route,
+                reasoning_effort=reasoning_effort,
+            ),
             completed=completed,
         ))
 
@@ -86,6 +102,7 @@ class AIExecutor:
                 response,
                 model=model,
                 route=route,
+                reasoning_effort=reasoning_effort,
                 latency_ms=latency_ms,
                 completed=status != "incomplete",
             )

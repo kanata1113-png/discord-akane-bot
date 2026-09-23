@@ -25,6 +25,7 @@ class UsageEvent:
     total_tokens: int
     cached_tokens: int = 0
     reasoning_tokens: int = 0
+    reasoning_effort: str | None = None
     latency_ms: int | None = None
     estimated_cost_units: float | None = None
     completed: bool = True
@@ -57,12 +58,19 @@ class CostTelemetry:
         events = self.snapshot()
         if since is not None:
             events = [e for e in events if datetime.fromisoformat(e.created_at or datetime.now(timezone.utc).isoformat()) >= since]
-        # GPT-6 light and standard tiers intentionally share Luna, so route
-        # class—not model name—must distinguish their operational usage.
+
         light_routes = {"normal-chat"}
         standard_routes = {"reasoning", "regulation", "long-question"}
-        luna_low = sum(1 for e in events if e.route in light_routes and e.model == Config.FAST_MODEL)
-        luna_high = sum(1 for e in events if e.route in standard_routes and e.model == Config.CHAT_MODEL)
+        luna_low = sum(
+            1 for e in events
+            if e.model == Config.FAST_MODEL
+            and (e.route in light_routes or e.reasoning_effort == Config.FAST_REASONING_EFFORT)
+        )
+        luna_high = sum(
+            1 for e in events
+            if e.model == Config.CHAT_MODEL
+            and (e.route in standard_routes or e.reasoning_effort == Config.CHAT_REASONING_EFFORT)
+        )
         sol = sum(1 for e in events if e.model == Config.REASONING_MODEL)
         total = len(events)
         input_tokens = sum(e.input_tokens for e in events)
@@ -75,7 +83,7 @@ class CostTelemetry:
             "luna": luna_low + luna_high,
             "luna_low": luna_low,
             "luna_high": luna_high,
-            # Deprecated compatibility alias for pre-GPT-6 dashboards.
+            # Deprecated compatibility alias for pre-GPT-6 consumers.
             "terra": luna_high,
             "sol": sol,
             "luna_rate": round((luna_low + luna_high) / total * 100, 1) if total else 0.0,
@@ -113,10 +121,25 @@ class CostTelemetry:
         }
 
     @staticmethod
-    def estimate_actual_units(model: str, input_tokens: int, output_tokens: int) -> float:
+    def estimate_actual_units(
+        model: str,
+        input_tokens: int,
+        output_tokens: int,
+        *,
+        route: str | None = None,
+        reasoning_effort: str | None = None,
+    ) -> float:
         # Relative units until provider pricing is explicitly configured.
-        return round(CostPolicy.model_weight(model) * (input_tokens + output_tokens) / 1000.0, 3)
-
+        return round(
+            CostPolicy.model_weight(
+                model,
+                route=route,
+                reasoning_effort=reasoning_effort,
+            )
+            * (input_tokens + output_tokens)
+            / 1000.0,
+            3,
+        )
 
     @staticmethod
     def month_start_utc() -> datetime:
