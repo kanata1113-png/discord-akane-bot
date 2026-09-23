@@ -75,10 +75,13 @@ class CostTelemetry:
             "luna": luna_low + luna_high,
             "luna_low": luna_low,
             "luna_high": luna_high,
+            # Deprecated compatibility alias for pre-GPT-6 dashboards.
+            "terra": luna_high,
             "sol": sol,
             "luna_rate": round((luna_low + luna_high) / total * 100, 1) if total else 0.0,
             "luna_low_rate": round(luna_low / total * 100, 1) if total else 0.0,
             "luna_high_rate": round(luna_high / total * 100, 1) if total else 0.0,
+            "terra_rate": round(luna_high / total * 100, 1) if total else 0.0,
             "sol_rate": round(sol / total * 100, 1) if total else 0.0,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
