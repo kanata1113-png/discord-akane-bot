@@ -103,7 +103,8 @@ def test_response_style_uses_compact_discord_markdown():
     assert "おおむね1680文字以内" in prompt
     assert "絵文字" in prompt
     assert "Markdown" in prompt
-    assert "# / ## / ### は使わない" in prompt
-    assert "**太字**" in prompt
-    assert "空行を何行も連続させない" in prompt
+    assert "1000文字未満" in prompt
+    assert "`##` を主要見出し" in prompt
+    assert "**太字の短いラベル**" in prompt
+    assert "不要な空白行を入れず" in prompt
     assert "ユーザーが長さ、形式、詳しさを明示した場合" in prompt
