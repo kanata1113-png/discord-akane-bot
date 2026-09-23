@@ -62,6 +62,6 @@ def test_release_i_privileged_surface_is_hidden_and_confirmed():
 def test_release_i_read_only_admin_diagnostics_remain_slash_only():
     assert ADMIN_READ_ONLY_SLASH_PATHS == {
         "/admin status",
-        "/admin ai_cost",
+        "/admin ai_usagedashboard",
         "/admin level_reward_list",
     }
