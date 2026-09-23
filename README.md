@@ -28,6 +28,14 @@ SQLite (/data/akane_v26.db in Railway Production)
 
 Production entrypoint: `bot.py` → `app.AkaneBot`.
 
+Current OpenAI routing target:
+
+- Light: `gpt-6-luna` / `low`
+- Standard: `gpt-6-luna` / `high`
+- Advanced: `gpt-6-sol` / `medium`
+- OpenAI execution boundary: Responses API
+- Jev remains the routing/preprocessing layer and never authorizes privileged actions.
+
 Stable extension entrypoints:
 
 - `cogs.admin`
