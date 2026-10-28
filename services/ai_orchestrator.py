@@ -33,6 +33,8 @@ class OrchestrationPlan:
     history_mode: str
     history_original_characters: int
     history_optimized_characters: int
+    history_original_estimated_tokens: int
+    history_optimized_estimated_tokens: int
 
 
 class AIOrchestrator:
@@ -100,6 +102,8 @@ class AIOrchestrator:
             history_mode=optimized.mode,
             history_original_characters=optimized.original_characters,
             history_optimized_characters=optimized.optimized_characters,
+            history_original_estimated_tokens=optimized.original_estimated_tokens,
+            history_optimized_estimated_tokens=optimized.optimized_estimated_tokens,
         )
         self.telemetry.emit(ControlPlaneEvent(
             event_id=route.event_id, phase="plan_built", route=route.route, source=route.source,
@@ -115,6 +119,7 @@ class AIOrchestrator:
             system=plan.system_prompt, user=plan.user_prompt, model=plan.route.model,
             max_tokens=plan.budget.max_output_tokens, history=execution_history,
             reasoning_effort=plan.route.reasoning_effort, route=plan.route.route,
+            feature="chat", logical_request_id=plan.route.event_id,
         )
         self.telemetry.emit(ControlPlaneEvent(
             event_id=plan.route.event_id, phase="execution_complete", route=plan.route.route,
@@ -127,11 +132,13 @@ class AIOrchestrator:
     async def chat(self, *, user_name: str, content: str, history=None) -> tuple[str, str, str]:
         plan = await self.build_plan(user_name=user_name, content=content, history=history)
         logger.info(
-            "AI orchestration | route=%s | source=%s | model=%s | effort=%s | max_output_tokens=%s | intent=%s | pipeline=%s | budget_reason=%s | history=%s | history_mode=%s | history_chars=%s->%s | event_id=%s",
+            "AI orchestration | route=%s | source=%s | model=%s | effort=%s | max_output_tokens=%s | intent=%s | pipeline=%s | budget_reason=%s | history=%s | history_mode=%s | history_chars=%s->%s | history_est_tokens=%s->%s | event_id=%s",
             plan.route.route, plan.route.source, plan.route.model, plan.route.reasoning_effort,
             plan.budget.max_output_tokens, plan.intent.intent, plan.intent.effective_pipeline,
             plan.budget.reason, len(history) if history else 0, plan.history_mode,
-            plan.history_original_characters, plan.history_optimized_characters, plan.route.event_id,
+            plan.history_original_characters, plan.history_optimized_characters,
+            plan.history_original_estimated_tokens, plan.history_optimized_estimated_tokens,
+            plan.route.event_id,
         )
         reply = await self.execute(plan, history=history)
         return reply, plan.route.model, plan.route.route

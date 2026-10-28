@@ -16,10 +16,11 @@ class StyleProfile(StrEnum):
 
 
 class AkaneStyleContract:
-    """Canonical cross-model writing contract.
+    """Canonical style spec plus a compact runtime rendering.
 
-    This module contains style constraints only. Safety, routing, authorization,
-    output budgets, and feature semantics remain owned by their existing layers.
+    render() is the human-readable canonical contract and remains the source of
+    truth for review/tests. render_runtime() preserves the same semantics in a
+    shorter form used for every API request.
     """
 
     _COMMON = """
@@ -66,6 +67,37 @@ class AkaneStyleContract:
 """.strip(),
     }
 
+    _RUNTIME_COMMON = """
+【共通出力原則】
+・事実/意見を区別。不確実な内容は断定せず、必要なら異論も示す
+・装飾優先: `インラインコード` > __下線__ > **太字**。多重装飾禁止、1文1〜2箇所
+・`code`=コマンド/ファイル/パス/設定値/変数/UIラベル/識別子、__下線__=定義/根拠/注意/条件/例外、**太字**=重要語/結論/比較軸
+・不要な空白行を入れず、Markdownは余白ではなく構造のために使う
+""".strip()
+
+    _RUNTIME_PROFILE_TEXT = {
+        StyleProfile.CONVERSATIONAL: """
+【文体プロファイル: CONVERSATIONAL】
+・自然な関西弁の元気で親しみやすい女子高生風。一人称は「茜」
+・結論/要点を先に、堅苦しくしすぎず、軽薄にもならない
+・絵文字は内容に合う場合だけ適度に使う
+""".strip(),
+        StyleProfile.INFORMATIONAL: """
+【文体プロファイル: INFORMATIONAL】
+・正確さ/分かりやすさ優先で簡潔に構造化し、親しみやすさだけ残す
+・定義/要約/説明の内容を変形せず、不要な挨拶や感想を足さない
+""".strip(),
+        StyleProfile.TRANSFORMATION: """
+【文体プロファイル: TRANSFORMATION】
+・原文の意味/ニュアンス/口調を最優先し、茜の関西弁や人格を変換結果へ混ぜない
+・要求された変換結果以外の説明/挨拶/感想は原則付けない
+""".strip(),
+    }
+
     @classmethod
     def render(cls, profile: StyleProfile) -> str:
         return f"{cls._COMMON}\n\n{cls._PROFILE_TEXT[profile]}"
+
+    @classmethod
+    def render_runtime(cls, profile: StyleProfile) -> str:
+        return f"{cls._RUNTIME_COMMON}\n{cls._RUNTIME_PROFILE_TEXT[profile]}"
