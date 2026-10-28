@@ -12,7 +12,7 @@ def test_gpt6_router_contract():
     assert Config.FAST_REASONING_EFFORT == "low"
     assert Config.CHAT_MODEL == "gpt-6-luna"
     assert Config.CHAT_REASONING_EFFORT == "high"
-    assert Config.REASONING_MODEL == "gpt-6-sol"
+    assert Config.REASONING_MODEL == "gpt-6-terra"
     assert Config.REASONING_EFFORT == "medium"
     assert Config.DEEP_REASONING_EFFORT == "medium"
 
@@ -24,7 +24,7 @@ def test_gpt6_route_assignments_keep_three_effort_tiers():
 
     assert (light.model, light.reasoning_effort) == ("gpt-6-luna", "low")
     assert (standard.model, standard.reasoning_effort) == ("gpt-6-luna", "high")
-    assert (deep.model, deep.reasoning_effort) == ("gpt-6-sol", "medium")
+    assert (deep.model, deep.reasoning_effort) == ("gpt-6-terra", "medium")
 
 
 def test_shared_luna_model_keeps_distinct_output_budgets():
