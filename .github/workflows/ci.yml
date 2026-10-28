@@ -53,3 +53,6 @@ jobs:
 
       - name: Run characterization tests
         run: pytest -q
+
+      - name: Run token efficiency R6 acceptance
+        run: python benchmarks/token_efficiency_rationalization_v01.py
