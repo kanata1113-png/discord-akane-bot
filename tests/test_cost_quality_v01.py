@@ -24,7 +24,7 @@ def test_output_budget_default_tiers():
     assert OutputBudgetPolicy.for_request(Config.REASONING_MODEL, "default", 3000).target_characters == 1680
 
 
-def test_expanded_terra_uses_full_reasoning_cap():
+def test_expanded_standard_uses_full_reasoning_cap():
     budget = OutputBudgetPolicy.for_request(
         Config.CHAT_MODEL,
         "expanded",
@@ -57,7 +57,7 @@ def test_cost_telemetry_summary_is_metadata_only():
     telemetry.record(UsageEvent(Config.REASONING_MODEL, "deep-reasoning", 200, 100, 300, estimated_cost_units=0.9))
     summary = telemetry.summary()
     assert summary["requests"] == 2
-    assert summary["sol_rate"] == 50.0
+    assert summary["advanced_rate"] == 50.0
     assert summary["input_tokens"] == 300
     assert summary["output_tokens"] == 150
 
