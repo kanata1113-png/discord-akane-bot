@@ -9,7 +9,7 @@ from services.detail_intent import DetailIntent
 from services.intent_controller import IntentController
 from services.output_budget import OutputBudgetPolicy
 from services.routing_policy import RoutingPolicy
-from services.sol_promotion import SolPromotionGate
+from services.advanced_promotion import AdvancedPromotionGate
 
 
 def test_detail_intent_levels():
@@ -35,18 +35,18 @@ def test_expanded_terra_uses_full_reasoning_cap():
     assert budget.reason == "output_budget_expanded"
 
 
-def test_sol_gate_demotes_weak_deep_route():
+def test_advanced_gate_demotes_weak_deep_route():
     selection = RoutingPolicy.legacy_selection("徹底的に")
     selection = replace(selection, model=Config.REASONING_MODEL, route="deep-reasoning")
-    gated, decision = SolPromotionGate.apply(selection, "徹底的に説明して")
+    gated, decision = AdvancedPromotionGate.apply(selection, "徹底的に説明して")
     assert not decision.promoted
     assert gated.model == Config.CHAT_MODEL
 
 
-def test_sol_gate_keeps_explicit_complex_deep_route():
+def test_advanced_gate_keeps_explicit_complex_deep_route():
     selection = RoutingPolicy.legacy_selection("複数の観点から厳密に比較し、根拠も示して")
     selection = replace(selection, model=Config.REASONING_MODEL, route="deep-reasoning")
-    gated, decision = SolPromotionGate.apply(selection, "複数の観点から厳密に比較し、根拠も示して")
+    gated, decision = AdvancedPromotionGate.apply(selection, "複数の観点から厳密に比較し、根拠も示して")
     assert decision.promoted
     assert gated.model == Config.REASONING_MODEL
 
