@@ -155,4 +155,7 @@ def evaluate() -> TokenEfficiencyEvaluation:
 
 
 if __name__ == "__main__":
-    print(json.dumps(asdict(evaluate()), ensure_ascii=False, indent=2))
+    report = evaluate()
+    print(json.dumps(asdict(report), ensure_ascii=False, indent=2))
+    if not report.accepted:
+        raise SystemExit(1)
