@@ -6,6 +6,7 @@ from ai_manager import AiManager
 from cogs.background import BackgroundTasksCog
 from cogs.event_handlers import EventsCog
 from config import Config
+from services.routing_policy import RoutingPolicy
 
 
 def test_chat_output_limits_are_route_specific():
@@ -13,11 +14,11 @@ def test_chat_output_limits_are_route_specific():
     assert Config.REASONING_MAX_TOKENS == 2000
     assert Config.DEEP_REASONING_MAX_TOKENS == 3000
 
-    assert AiManager.select_chat_max_tokens("normal-chat") == 1500
-    assert AiManager.select_chat_max_tokens("regulation") == 2000
-    assert AiManager.select_chat_max_tokens("reasoning") == 2000
-    assert AiManager.select_chat_max_tokens("long-question") == 2000
-    assert AiManager.select_chat_max_tokens("deep-reasoning") == 3000
+    assert RoutingPolicy.tier_for_route("normal-chat").max_output_tokens == 1500
+    assert RoutingPolicy.tier_for_route("regulation").max_output_tokens == 2000
+    assert RoutingPolicy.tier_for_route("reasoning").max_output_tokens == 2000
+    assert RoutingPolicy.tier_for_route("long-question").max_output_tokens == 2000
+    assert RoutingPolicy.tier_for_route("deep-reasoning").max_output_tokens == 3000
 
 
 @pytest.mark.asyncio
