@@ -28,7 +28,7 @@ def test_history_optimizer_compresses_large_old_context_and_keeps_recent_verbati
     assert "過去会話の圧縮メモ" in result.messages[0]["content"]
 
 
-def test_light_followup_can_downgrade_terra_to_luna():
+def test_light_followup_can_downgrade_normal_to_light():
     history = [{"role": "user", "content": "比較して"}, {"role": "assistant", "content": "回答"}]
     context = OrchestrationContextBuilder.build("それを短く、要点だけ", history)
     selection = RoutingPolicy.legacy_selection("メリットとデメリットを比較して")
@@ -55,7 +55,7 @@ def test_adaptive_default_output_budget_uses_request_length():
     assert standard.max_output_tokens == 700
 
 
-def test_expanded_terra_keeps_completion_cap():
+def test_expanded_standard_keeps_completion_cap():
     expanded = OutputBudgetPolicy.for_request(Config.CHAT_MODEL, "expanded", 2000, message_length=20)
     assert expanded.max_output_tokens == 2000
 
