@@ -52,7 +52,7 @@ def _feature_efficiency_rows(usage: dict) -> list[str]:
         reverse=True,
     )[:5]:
         rows.append(
-            f"\`{feature}\` · req **{stats.get('logical_requests', 0):,}** · "
+            f"`{feature}` · req **{stats.get('logical_requests', 0):,}** · "
             f"calls **{stats.get('model_calls', 0):,}** · "
             f"avg in **{stats.get('avg_input_tokens', 0):,.0f}**"
         )
@@ -199,7 +199,7 @@ async def _usage_dashboard(self, interaction: discord.Interaction) -> None:
     embed.add_field(
         name="🧠 GPT-6 ROUTING",
         value="\n".join(
-            f"{label} \`{model_effort}\` · **{count:,}** · **{rate}%**"
+            f"{label} `{model_effort}` · **{count:,}** · **{rate}%**"
             for label, model_effort, count, rate, _, _, _ in rows
         ),
         inline=False,
@@ -257,12 +257,12 @@ def _status_wrapper(original: Callable):
                         index,
                         name="🧠 AI",
                         value=(
-                            f"LIGHT: \`{Config.FAST_MODEL}\` / "
-                            f"\`{Config.FAST_REASONING_EFFORT}\`\n"
-                            f"NORMAL: \`{Config.CHAT_MODEL}\` / "
-                            f"\`{Config.CHAT_REASONING_EFFORT}\`\n"
-                            f"ADVANCED: \`{Config.REASONING_MODEL}\` / "
-                            f"\`{Config.DEEP_REASONING_EFFORT}\`"
+                            f"LIGHT: `{Config.FAST_MODEL}` / "
+                            f"`{Config.FAST_REASONING_EFFORT}`\n"
+                            f"NORMAL: `{Config.CHAT_MODEL}` / "
+                            f"`{Config.CHAT_REASONING_EFFORT}`\n"
+                            f"ADVANCED: `{Config.REASONING_MODEL}` / "
+                            f"`{Config.DEEP_REASONING_EFFORT}`"
                         ),
                         inline=False,
                     )
