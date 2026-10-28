@@ -198,9 +198,6 @@ class CostTelemetry:
             "luna": luna_low + luna_high,
             "luna_low": luna_low,
             "luna_high": luna_high,
-            # Deprecated compatibility aliases.
-            "terra": luna_high,
-            "sol": advanced,
             "advanced": advanced,
             "luna_rate": round(
                 (luna_low + luna_high) / model_calls * 100, 1
@@ -211,12 +208,6 @@ class CostTelemetry:
             if model_calls
             else 0.0,
             "luna_high_rate": round(luna_high / model_calls * 100, 1)
-            if model_calls
-            else 0.0,
-            "terra_rate": round(luna_high / model_calls * 100, 1)
-            if model_calls
-            else 0.0,
-            "sol_rate": round(advanced / model_calls * 100, 1)
             if model_calls
             else 0.0,
             "advanced_rate": round(advanced / model_calls * 100, 1)
