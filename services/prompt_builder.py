@@ -65,8 +65,8 @@ class PromptBuilder:
 ・絵文字は内容に合う場合だけ適度に使う
 ・Discordで読みやすいMarkdownを使い、短い段落や箇条書きで構造化する
 ・1000文字未満の回答では # / ## / ### を原則使わず、区切りが必要なら **太字の短いラベル**を使う
-・1000文字以上の長文では \`##\` を主要見出しとして使用してよい。\`###\` は明確な下位区分が必要な場合だけ使い、\`#\` と \`####\` 以下は使わない
-・1000〜1500文字では \`##\` は原則2〜4個程度とし、1〜2段落ごとに見出しを置くような細分化はしない
+・1000文字以上の長文では `##` を主要見出しとして使用してよい。`###` は明確な下位区分が必要な場合だけ使い、`#` と `####` 以下は使わない
+・1000〜1500文字では `##` は原則2〜4個程度とし、1〜2段落ごとに見出しを置くような細分化はしない
 ・不要な空白行を入れず、段落や箇条書きをコンパクトに配置する
 ・同じ内容の言い換えや不要な前置きを減らし、結論・要点を先に示す
 """.strip()
@@ -86,8 +86,8 @@ class PromptBuilder:
 ・ユーザーが長さ、形式、詳しさを明示した場合はその指定を優先する
 ・絵文字は内容に合う場合だけ適度に使い、Discord向けMarkdownで結論/要点を先にする
 ・1000文字未満は # / ## / ### を原則使わず、必要なら **太字の短いラベル**
-・1000文字以上は \`##\` を主要見出しに使用可。\`###\` は明確な下位区分だけ、\`#\` と \`####\` 以下は禁止
-・1000〜1500文字の \`##\` は原則2〜4個。不要な空白行を入れずコンパクトにする
+・1000文字以上は `##` を主要見出しに使用可。`###` は明確な下位区分だけ、`#` と `####` 以下は禁止
+・1000〜1500文字の `##` は原則2〜4個。不要な空白行を入れずコンパクトにする
 """.strip()
 
     @staticmethod
@@ -100,7 +100,7 @@ class PromptBuilder:
     @staticmethod
     def _runtime_regulation_prompt() -> str:
         return (
-            "【表現の自由・規制関連】\\n"
+            "【表現の自由・規制関連】\n"
             "この領域に強い関心を持つ。事実/法制度/一般的評価/茜自身の意見を区別し、"
             "特定の立場へ無条件に同調せず、必要なら反対意見や別の論点も示す。"
         )
@@ -165,7 +165,7 @@ class PromptBuilder:
                 if canonical
                 else cls._runtime_regulation_prompt()
             )
-        return "\\n\\n".join(blocks).strip()
+        return "\n\n".join(blocks).strip()
 
     @classmethod
     def chat_system_prompt(
@@ -201,7 +201,7 @@ class PromptBuilder:
 
     @staticmethod
     def chat_user_prompt(user_name: str, content: str) -> str:
-        return f"ユーザー名: {user_name}\\n発言:\\n{content}"
+        return f"ユーザー名: {user_name}\n発言:\n{content}"
 
     @classmethod
     def translation_prompt(
@@ -210,8 +210,8 @@ class PromptBuilder:
         target_language: str,
     ) -> tuple[str, str]:
         system = (
-            "あなたは高品質な翻訳AIです。\\n"
-            f"{cls.style_contract_prompt(StyleProfile.TRANSFORMATION)}\\n"
+            "あなたは高品質な翻訳AIです。\n"
+            f"{cls.style_contract_prompt(StyleProfile.TRANSFORMATION)}\n"
             "【翻訳機能】翻訳のみ。原文の意味・ニュアンス・口調を可能な限り維持し、"
             "余計な解説は不要です。"
         )
@@ -220,8 +220,8 @@ class PromptBuilder:
             feature="translation",
         )
         if fewshot:
-            system += "\\n" + fewshot
-        user = f"次の文章を {target_language} へ翻訳してください。\\n\\n{text}"
+            system += "\n" + fewshot
+        user = f"次の文章を {target_language} へ翻訳してください。\n\n{text}"
         return system, user
 
     @classmethod
@@ -240,20 +240,20 @@ class PromptBuilder:
             feature = (
                 "【辞書機能】入力語の意味、使い方、必要なら短い例を簡潔に説明する。"
             )
-        system = f"{contract}\\n{feature}"
+        system = f"{contract}\n{feature}"
         fewshot = cls.fewshot_prompt(
             StyleProfile.INFORMATIONAL,
             feature="definition",
         )
         if fewshot:
-            system += "\\n" + fewshot
+            system += "\n" + fewshot
         return system, word
 
     @classmethod
     def summary_prompt(cls, messages) -> tuple[str, str]:
-        joined = "\\n".join(f"- {message}" for message in messages)
+        joined = "\n".join(f"- {message}" for message in messages)
         system = (
-            f"{cls.style_contract_prompt(StyleProfile.INFORMATIONAL)}\\n"
+            f"{cls.style_contract_prompt(StyleProfile.INFORMATIONAL)}\n"
             "【要約機能】重要点を短くまとめ、誰が何を話したか分かる形にする。"
             "原文にない主張や評価を足さない。"
         )
@@ -262,6 +262,6 @@ class PromptBuilder:
             feature="summary",
         )
         if fewshot:
-            system += "\\n" + fewshot
-        user = f"以下の発言を要約してください。\\n\\n{joined}"
+            system += "\n" + fewshot
+        user = f"以下の発言を要約してください。\n\n{joined}"
         return system, user
