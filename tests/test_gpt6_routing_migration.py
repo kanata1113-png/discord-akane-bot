@@ -69,11 +69,11 @@ def test_standard_followup_downgrades_effort_even_when_model_name_is_same():
 
 
 def test_weak_deep_route_demotes_to_luna_high():
-    from services.sol_promotion import SolPromotionGate
+    from services.advanced_promotion import AdvancedPromotionGate
 
     selection = RoutingPolicy.legacy_selection("徹底的に")
     selection = replace(selection, model=Config.REASONING_MODEL, route="deep-reasoning")
-    result, decision = SolPromotionGate.apply(selection, "徹底的に説明して")
+    result, decision = AdvancedPromotionGate.apply(selection, "徹底的に説明して")
 
     assert not decision.promoted
     assert result.model == "gpt-6-luna"

@@ -26,7 +26,7 @@ class AiManager:
             generate=self.call_gpt,
             routing_telemetry=self.routing_telemetry,
         )
-        # Keep legacy attribute names for existing call sites/tests.
+        # Keep stable runtime handles used by current call sites and tests.
         self.jev_router = self.control_plane.provider
         self.routing_policy = self.control_plane.routing_policy
         self.orchestrator = self.control_plane.orchestrator
@@ -80,67 +80,6 @@ class AiManager:
     @staticmethod
     def get_system_prompt(regulation_mode: bool = False) -> str:
         return PromptBuilder.chat_system_prompt(regulation_mode=regulation_mode)
-
-    def select_chat_model(self, content: str) -> tuple[str, str, str]:
-        selection = RoutingPolicy.legacy_selection(content)
-        return selection.model, selection.reasoning_effort, selection.route
-
-    @staticmethod
-    def _normalize_legacy_route_for_jev(route: str) -> str:
-        return RoutingPolicy.normalize_legacy_route(route)
-
-    @staticmethod
-    def _route_config(route: str) -> tuple[str, str]:
-        tier = RoutingPolicy.tier_for_route(route)
-        return tier.model, tier.reasoning_effort
-
-    @staticmethod
-    def _jev_fallback_reason(decision) -> str:
-        return RoutingPolicy.fallback_reason(decision)
-
-    async def _run_jev_shadow(self, content: str, legacy_route: str) -> None:
-        legacy = RoutingPolicy.legacy_selection(content)
-        if legacy.route != legacy_route:
-            tier = RoutingPolicy.tier_for_route(legacy_route)
-            legacy = legacy.__class__(
-                model=tier.model,
-                reasoning_effort=tier.reasoning_effort,
-                route=legacy_route,
-                max_output_tokens=tier.max_output_tokens,
-                mode="legacy",
-                source="legacy",
-                legacy_route=legacy_route,
-            )
-        await self._policy()._observe_shadow(content, legacy)
-
-    def _schedule_jev_shadow(self, content: str, legacy_route: str) -> None:
-        legacy = RoutingPolicy.legacy_selection(content)
-        if legacy.route != legacy_route:
-            tier = RoutingPolicy.tier_for_route(legacy_route)
-            legacy = legacy.__class__(
-                model=tier.model,
-                reasoning_effort=tier.reasoning_effort,
-                route=legacy_route,
-                max_output_tokens=tier.max_output_tokens,
-                mode="legacy",
-                source="legacy",
-                legacy_route=legacy_route,
-            )
-        self._policy()._schedule_shadow(content, legacy)
-
-    async def _select_production_route(
-        self,
-        content: str,
-        legacy_model: str,
-        legacy_effort: str,
-        legacy_route: str,
-    ) -> tuple[str, str, str]:
-        selection = await self._policy().select(content)
-        return selection.model, selection.reasoning_effort, selection.route
-
-    @staticmethod
-    def select_chat_max_tokens(route: str) -> int:
-        return RoutingPolicy.tier_for_route(route).max_output_tokens
 
     async def call_gpt(
         self,

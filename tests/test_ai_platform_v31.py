@@ -7,7 +7,7 @@ from services.history_optimizer import HistoryOptimizer
 from services.orchestration_context import OrchestrationContextBuilder
 from services.output_budget import OutputBudgetPolicy
 from services.routing_policy import RoutingPolicy
-from services.sol_promotion import SolPromotionGate
+from services.advanced_promotion import AdvancedPromotionGate
 
 
 def test_history_optimizer_passthrough_for_small_context():
@@ -28,7 +28,7 @@ def test_history_optimizer_compresses_large_old_context_and_keeps_recent_verbati
     assert "過去会話の圧縮メモ" in result.messages[0]["content"]
 
 
-def test_light_followup_can_downgrade_terra_to_luna():
+def test_light_followup_can_downgrade_normal_to_light():
     history = [{"role": "user", "content": "比較して"}, {"role": "assistant", "content": "回答"}]
     context = OrchestrationContextBuilder.build("それを短く、要点だけ", history)
     selection = RoutingPolicy.legacy_selection("メリットとデメリットを比較して")
@@ -55,24 +55,24 @@ def test_adaptive_default_output_budget_uses_request_length():
     assert standard.max_output_tokens == 700
 
 
-def test_expanded_terra_keeps_completion_cap():
+def test_expanded_standard_keeps_completion_cap():
     expanded = OutputBudgetPolicy.for_request(Config.CHAT_MODEL, "expanded", 2000, message_length=20)
     assert expanded.max_output_tokens == 2000
 
 
-def test_sol_score_requires_more_than_one_generic_depth_signal():
+def test_advanced_score_requires_more_than_one_generic_depth_signal():
     weak = RoutingPolicy.legacy_selection("徹底的に")
     weak = replace(weak, model=Config.REASONING_MODEL, route="deep-reasoning")
-    gated, decision = SolPromotionGate.apply(weak, "徹底的に説明して")
+    gated, decision = AdvancedPromotionGate.apply(weak, "徹底的に説明して")
     assert not decision.promoted
     assert decision.score < 3
     assert gated.model == Config.CHAT_MODEL
 
 
-def test_sol_score_keeps_structurally_complex_request():
+def test_advanced_score_keeps_structurally_complex_request():
     selection = RoutingPolicy.legacy_selection("複数の観点から厳密に比較し、根拠も示して")
     selection = replace(selection, model=Config.REASONING_MODEL, route="deep-reasoning")
-    gated, decision = SolPromotionGate.apply(selection, "複数の観点から厳密に比較し、根拠も示して")
+    gated, decision = AdvancedPromotionGate.apply(selection, "複数の観点から厳密に比較し、根拠も示して")
     assert decision.promoted
     assert decision.score >= 3
     assert gated.model == Config.REASONING_MODEL

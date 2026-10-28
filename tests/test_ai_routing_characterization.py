@@ -1,14 +1,14 @@
-from ai_manager import AiManager
 from config import Config
+from services.routing_policy import RoutingPolicy
 
 
-def manager_without_client():
-    return AiManager.__new__(AiManager)
+def selection_tuple(content: str) -> tuple[str, str, str]:
+    selection = RoutingPolicy.legacy_selection(content)
+    return selection.model, selection.reasoning_effort, selection.route
 
 
 def test_normal_chat_route():
-    model, effort, route = manager_without_client().select_chat_model("今日は何してたん？")
-    assert (model, effort, route) == (
+    assert selection_tuple("今日は何してたん？") == (
         Config.FAST_MODEL,
         Config.FAST_REASONING_EFFORT,
         "normal-chat",
@@ -16,10 +16,7 @@ def test_normal_chat_route():
 
 
 def test_regulation_route():
-    model, effort, route = manager_without_client().select_chat_model(
-        "表現規制と憲法について教えて"
-    )
-    assert (model, effort, route) == (
+    assert selection_tuple("表現規制と憲法について教えて") == (
         Config.CHAT_MODEL,
         Config.CHAT_REASONING_EFFORT,
         "regulation",
@@ -27,10 +24,7 @@ def test_regulation_route():
 
 
 def test_reasoning_route():
-    model, effort, route = manager_without_client().select_chat_model(
-        "この制度のメリットとデメリットを比較して"
-    )
-    assert (model, effort, route) == (
+    assert selection_tuple("この制度のメリットとデメリットを比較して") == (
         Config.CHAT_MODEL,
         Config.CHAT_REASONING_EFFORT,
         "reasoning",
@@ -38,9 +32,7 @@ def test_reasoning_route():
 
 
 def test_deep_reasoning_keeps_medium_effort_for_budget():
-    model, effort, route = manager_without_client().select_chat_model(
-        "この問題を多角的に徹底的に分析して"
-    )
+    model, effort, route = selection_tuple("この問題を多角的に徹底的に分析して")
     assert (model, effort, route) == (
         Config.REASONING_MODEL,
         Config.DEEP_REASONING_EFFORT,
@@ -50,8 +42,7 @@ def test_deep_reasoning_keeps_medium_effort_for_budget():
 
 
 def test_long_question_route_at_350_characters():
-    model, effort, route = manager_without_client().select_chat_model("あ" * 350)
-    assert (model, effort, route) == (
+    assert selection_tuple("あ" * 350) == (
         Config.CHAT_MODEL,
         Config.CHAT_REASONING_EFFORT,
         "long-question",
@@ -59,8 +50,7 @@ def test_long_question_route_at_350_characters():
 
 
 def test_short_question_below_boundary_stays_normal():
-    model, effort, route = manager_without_client().select_chat_model("あ" * 349)
-    assert (model, effort, route) == (
+    assert selection_tuple("あ" * 349) == (
         Config.FAST_MODEL,
         Config.FAST_REASONING_EFFORT,
         "normal-chat",

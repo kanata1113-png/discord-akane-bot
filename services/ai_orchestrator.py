@@ -15,7 +15,7 @@ from services.orchestration_context import OrchestrationContext, OrchestrationCo
 from services.output_budget import OutputBudgetPolicy
 from services.prompt_builder import PromptBuilder
 from services.routing_policy import RouteSelection, RoutingPolicy
-from services.sol_promotion import SolPromotionGate
+from services.advanced_promotion import AdvancedPromotionGate
 
 logger = logging.getLogger("AkaneBot")
 GenerateCallable = Callable[..., Awaitable[str]]
@@ -76,7 +76,7 @@ class AIOrchestrator:
         intent = self.classify_intent(context)
         route = await self.select_route(content=content, history=history)
         route, _followup = FollowupDowngradePolicy.apply(route, context)
-        route, _promotion = SolPromotionGate.apply(route, content)
+        route, _promotion = AdvancedPromotionGate.apply(route, content)
         route_budget = self.select_budget(route=route, context=context)
         detail = DetailIntent.classify(content)
         output = OutputBudgetPolicy.for_request(

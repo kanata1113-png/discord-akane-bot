@@ -13,11 +13,11 @@ class PromotionDecision:
     score: int = 0
 
 
-class SolPromotionGate:
-    """Score explicit depth and structural complexity before allowing Sol.
+class AdvancedPromotionGate:
+    """Require explicit depth and structural complexity for ADVANCED routing.
 
-    This is deliberately deterministic and conservative: model promotion is
-    never based on a single generic word such as "詳しく" alone.
+    This deterministic gate is model-name independent: promotion is never based
+    on one generic cue such as "詳しく" alone.
     """
 
     EXPLICIT = (
@@ -47,19 +47,30 @@ class SolPromotionGate:
         return score
 
     @classmethod
-    def apply(cls, selection: RouteSelection, content: str) -> tuple[RouteSelection, PromotionDecision]:
+    def apply(
+        cls,
+        selection: RouteSelection,
+        content: str,
+    ) -> tuple[RouteSelection, PromotionDecision]:
         if selection.model != Config.REASONING_MODEL:
-            return selection, PromotionDecision(False, "not_sol_candidate", 0)
+            return selection, PromotionDecision(False, "not_advanced_candidate", 0)
 
         score = cls.score(content)
         if score >= 3:
-            return selection, PromotionDecision(True, "deep_complexity_score", score)
+            return selection, PromotionDecision(
+                True,
+                "deep_complexity_score",
+                score,
+            )
 
         return replace(
             selection,
             model=Config.CHAT_MODEL,
             reasoning_effort=Config.CHAT_REASONING_EFFORT,
             route="reasoning",
-            max_output_tokens=min(selection.max_output_tokens, Config.REASONING_MAX_TOKENS),
-            fallback_reason="sol_promotion_gate_demote",
-        ), PromotionDecision(False, "insufficient_sol_score", score)
+            max_output_tokens=min(
+                selection.max_output_tokens,
+                Config.REASONING_MAX_TOKENS,
+            ),
+            fallback_reason="advanced_promotion_gate_demote",
+        ), PromotionDecision(False, "insufficient_advanced_score", score)
