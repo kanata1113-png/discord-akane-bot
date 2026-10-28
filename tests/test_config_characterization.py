@@ -3,7 +3,7 @@ from config import Config
 
 def test_ai_model_routing_configuration_is_stable():
     assert Config.CHAT_MODEL == "gpt-6-luna"
-    assert Config.REASONING_MODEL == "gpt-6-sol"
+    assert Config.REASONING_MODEL == "gpt-6-terra"
     assert Config.FAST_MODEL == "gpt-6-luna"
     assert Config.GPT_MODEL == Config.CHAT_MODEL
 
