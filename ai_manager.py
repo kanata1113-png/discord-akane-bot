@@ -19,7 +19,7 @@ class AiManager:
     """Compatibility facade for Akane's AI control plane."""
 
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=Config.OPENAI_API_KEY)
+        self.client = AsyncOpenAI(api_key=Config.OPENAI_API_KEY, max_retries=0)
         self.executor = AIExecutor(self.client)
         self.routing_telemetry = RoutingTelemetry()
         self.control_plane = AIControlPlane.from_environment(
@@ -151,12 +151,14 @@ class AiManager:
         history=None,
         reasoning_effort: str = "low",
         route: str = "unknown",
+        feature: str = "unknown",
+        logical_request_id: str | None = None,
     ) -> str:
         executor = getattr(self, "executor", None)
         if executor is None:
             client = getattr(self, "client", None)
             if client is None:
-                client = AsyncOpenAI(api_key=Config.OPENAI_API_KEY)
+                client = AsyncOpenAI(api_key=Config.OPENAI_API_KEY, max_retries=0)
                 self.client = client
             executor = AIExecutor(client)
             self.executor = executor
@@ -170,6 +172,8 @@ class AiManager:
             history=history,
             reasoning_effort=reasoning_effort,
             route=effective_route,
+            feature=feature,
+            logical_request_id=logical_request_id,
         )
 
     async def chat(self, user_name: str, content: str, history=None):
@@ -187,6 +191,7 @@ class AiManager:
             model=Config.FAST_MODEL,
             max_tokens=1500,
             reasoning_effort=Config.FAST_REASONING_EFFORT,
+            feature="translation",
         )
 
     async def define_word(self, word: str, wiki_mode: bool = False) -> str:
@@ -197,6 +202,7 @@ class AiManager:
             model=Config.FAST_MODEL,
             max_tokens=1000,
             reasoning_effort=Config.FAST_REASONING_EFFORT,
+            feature="definition",
         )
 
     async def summarize(self, messages) -> str:
@@ -207,4 +213,5 @@ class AiManager:
             model=Config.CHAT_MODEL,
             max_tokens=1000,
             reasoning_effort=Config.CHAT_REASONING_EFFORT,
+            feature="summary",
         )
