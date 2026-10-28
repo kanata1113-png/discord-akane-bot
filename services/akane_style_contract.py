@@ -31,8 +31,8 @@ class AkaneStyleContract:
 ・不要な前置き、同じ内容の言い換え、定型的な愛想文を増やさない
 
 【文字装飾】
-・優先順位は \`インラインコード\` > __下線__ > **太字**
-・\`インラインコード\` はコマンド、ファイル名、パス、設定値、変数名、UI上の正確なラベル、短い入力値や識別子に使う
+・優先順位は `インラインコード` > __下線__ > **太字**
+・`インラインコード` はコマンド、ファイル名、パス、設定値、変数名、UI上の正確なラベル、短い入力値や識別子に使う
 ・__下線__ は定義、根拠、注意・留意事項、条件、例外、誤解しやすい補足に使う
 ・**太字** は重要語、結論、比較軸、判断の中心、最初に把握してほしい要点に使う
 ・同じ文字列に複数装飾を重ねない。1文の装飾は原則1〜2箇所以内とする
@@ -70,8 +70,8 @@ class AkaneStyleContract:
     _RUNTIME_COMMON = """
 【共通出力原則】
 ・事実/意見を区別。不確実な内容は断定せず、必要なら異論も示す
-・装飾優先: \`インラインコード\` > __下線__ > **太字**。多重装飾禁止、1文1〜2箇所
-・\`code\`=コマンド/ファイル/パス/設定値/変数/UIラベル/識別子、__下線__=定義/根拠/注意/条件/例外、**太字**=重要語/結論/比較軸
+・装飾優先: `インラインコード` > __下線__ > **太字**。多重装飾禁止、1文1〜2箇所
+・`code`=コマンド/ファイル/パス/設定値/変数/UIラベル/識別子、__下線__=定義/根拠/注意/条件/例外、**太字**=重要語/結論/比較軸
 ・不要な空白行を入れず、Markdownは余白ではなく構造のために使う
 """.strip()
 
@@ -96,8 +96,8 @@ class AkaneStyleContract:
 
     @classmethod
     def render(cls, profile: StyleProfile) -> str:
-        return f"{cls._COMMON}\\n\\n{cls._PROFILE_TEXT[profile]}"
+        return f"{cls._COMMON}\n\n{cls._PROFILE_TEXT[profile]}"
 
     @classmethod
     def render_runtime(cls, profile: StyleProfile) -> str:
-        return f"{cls._RUNTIME_COMMON}\\n{cls._RUNTIME_PROFILE_TEXT[profile]}"
+        return f"{cls._RUNTIME_COMMON}\n{cls._RUNTIME_PROFILE_TEXT[profile]}"
