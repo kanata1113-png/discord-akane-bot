@@ -68,11 +68,19 @@ class RoutingTelemetry:
         route = str(event.get("selected_route") or "")
         model = event.get("model")
         effort = event.get("reasoning_effort")
-        if model == Config.REASONING_MODEL or route == "deep-reasoning":
+        # All tiers use Luna; the execution route is authoritative.
+        if route == "deep-reasoning":
             return "advanced"
-        if route in cls.STANDARD_ROUTES or effort == Config.CHAT_REASONING_EFFORT:
+        if route in cls.STANDARD_ROUTES:
             return "normal"
-        if route in cls.LIGHT_ROUTES or effort == Config.FAST_REASONING_EFFORT:
+        if route in cls.LIGHT_ROUTES:
+            return "light"
+        # Legacy records may omit a route. Fall back to effort, not model.
+        if effort == Config.DEEP_REASONING_EFFORT:
+            return "advanced"
+        if effort == Config.CHAT_REASONING_EFFORT:
+            return "normal"
+        if effort == Config.FAST_REASONING_EFFORT:
             return "light"
         return "unknown"
 

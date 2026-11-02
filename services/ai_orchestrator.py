@@ -84,6 +84,7 @@ class AIOrchestrator:
             detail.level,
             route_budget.max_output_tokens,
             message_length=context.message_length,
+            route=route.route,
         )
         budget = BudgetDecision(route=route.route, max_output_tokens=output.max_output_tokens, hard_cap=route_budget.hard_cap, reason=output.reason, controller_enabled=True)
         system_prompt, user_prompt = self.build_prompts(

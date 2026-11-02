@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from config import Config
 from services.cost_policy import CostPolicy
+from services.routing_metrics import RoutingTelemetry
 
 
 logger = logging.getLogger("AkaneBot")
@@ -93,27 +94,32 @@ class CostTelemetry:
                 >= since
             ]
 
-        light_routes = {"normal-chat"}
-        standard_routes = {"reasoning", "regulation", "long-question"}
-        luna_low = sum(
-            1
-            for e in events
-            if e.model == Config.FAST_MODEL
-            and (
-                e.route in light_routes
-                or e.reasoning_effort == Config.FAST_REASONING_EFFORT
+        # Share one route/effort classifier with the routing dashboard.
+        # Model identity alone cannot distinguish the three Luna tiers.
+        classified = [
+            (
+                event.model,
+                RoutingTelemetry.tier_for_event({
+                    "selected_route": event.route,
+                    "reasoning_effort": event.reasoning_effort,
+                }),
             )
+            for event in events
+        ]
+        luna_low = sum(
+            model == Config.FAST_MODEL and tier == "light"
+            for model, tier in classified
+        )
+        luna_medium = sum(
+            model == Config.CHAT_MODEL and tier == "normal"
+            for model, tier in classified
         )
         luna_high = sum(
-            1
-            for e in events
-            if e.model == Config.CHAT_MODEL
-            and (
-                e.route in standard_routes
-                or e.reasoning_effort == Config.CHAT_REASONING_EFFORT
-            )
+            model == Config.REASONING_MODEL and tier == "advanced"
+            for model, tier in classified
         )
-        advanced = sum(1 for e in events if e.model == Config.REASONING_MODEL)
+        advanced = sum(tier == "advanced" for _, tier in classified)
+        luna_total = luna_low + luna_medium + luna_high
 
         model_calls = len(events)
         logical_keys = {
@@ -195,16 +201,20 @@ class CostTelemetry:
             )
             if logical_requests
             else 0.0,
-            "luna": luna_low + luna_high,
+            "luna": luna_total,
             "luna_low": luna_low,
+            "luna_medium": luna_medium,
             "luna_high": luna_high,
             "advanced": advanced,
             "luna_rate": round(
-                (luna_low + luna_high) / model_calls * 100, 1
+                luna_total / model_calls * 100, 1
             )
             if model_calls
             else 0.0,
             "luna_low_rate": round(luna_low / model_calls * 100, 1)
+            if model_calls
+            else 0.0,
+            "luna_medium_rate": round(luna_medium / model_calls * 100, 1)
             if model_calls
             else 0.0,
             "luna_high_rate": round(luna_high / model_calls * 100, 1)

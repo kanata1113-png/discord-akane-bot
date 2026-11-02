@@ -31,14 +31,14 @@ def test_reasoning_route():
     )
 
 
-def test_deep_reasoning_keeps_medium_effort_for_budget():
+def test_deep_reasoning_uses_high_effort():
     model, effort, route = selection_tuple("この問題を多角的に徹底的に分析して")
     assert (model, effort, route) == (
         Config.REASONING_MODEL,
         Config.DEEP_REASONING_EFFORT,
         "deep-reasoning",
     )
-    assert effort == "medium"
+    assert effort == "high"
 
 
 def test_long_question_route_at_350_characters():

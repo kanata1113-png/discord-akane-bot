@@ -18,7 +18,7 @@ def test_cost_policy_distinguishes_shared_luna_tiers(monkeypatch):
     assert CostPolicy.model_weight(
         Config.CHAT_MODEL,
         route="reasoning",
-        reasoning_effort="high",
+        reasoning_effort="medium",
     ) == 1.0
     # Ambiguous shared Luna calls must not silently under-estimate cost.
     assert CostPolicy.model_weight(Config.FAST_MODEL) == 1.0
@@ -69,8 +69,8 @@ def test_dashboard_rows_use_tiers_not_model_names():
         "by_tier": {"light": 5, "normal": 3, "advanced": 2},
     })
     assert rows[0][:4] == ("LIGHT", "gpt-6-luna / low", 5, 50.0)
-    assert rows[1][:4] == ("NORMAL", "gpt-6-luna / high", 3, 30.0)
-    assert rows[2][:4] == ("ADVANCED", "gpt-6-terra / medium", 2, 20.0)
+    assert rows[1][:4] == ("NORMAL", "gpt-6-luna / medium", 3, 30.0)
+    assert rows[2][:4] == ("ADVANCED", "gpt-6-luna / high", 2, 20.0)
 
 
 def test_admin_diagnostic_baseline_uses_real_dashboard_name():
@@ -98,3 +98,44 @@ def test_admin_runtime_installs_gpt6_dashboard_callback():
     dashboard = next(command for command in children if command.name == "ai_usagedashboard")
     assert dashboard.callback.__module__ == "services.gpt6_admin_diagnostics"
     assert dashboard.callback.__name__ == "_usage_dashboard"
+
+
+def test_usage_telemetry_counts_all_three_luna_effort_tiers():
+    from services.cost_telemetry import CostTelemetry, UsageEvent
+
+    metrics = CostTelemetry()
+    for route, effort in (
+        ("normal-chat", "low"),
+        ("reasoning", "medium"),
+        ("deep-reasoning", "high"),
+    ):
+        metrics.record(UsageEvent(
+            model=Config.FAST_MODEL,
+            route=route,
+            input_tokens=100,
+            output_tokens=50,
+            total_tokens=150,
+            reasoning_effort=effort,
+        ))
+    summary = metrics.summary()
+    assert summary["luna"] == 3
+    assert summary["luna_rate"] == 100.0
+    assert summary["luna_low"] == 1
+    assert summary["luna_medium"] == 1
+    assert summary["luna_high"] == 1
+    assert summary["advanced"] == 1
+    assert summary["advanced_rate"] == round(100 / 3, 1)
+
+
+def test_route_is_authoritative_over_historical_effort_labels():
+    assert CostPolicy.model_weight(
+        Config.FAST_MODEL, route="reasoning", reasoning_effort="high"
+    ) == 1.0
+    assert CostPolicy.model_weight(
+        Config.FAST_MODEL, route="deep-reasoning", reasoning_effort="medium"
+    ) == 3.0
+    assert RoutingTelemetry.tier_for_event({
+        "selected_route": "reasoning",
+        "reasoning_effort": "high",
+        "model": Config.FAST_MODEL,
+    }) == "normal"

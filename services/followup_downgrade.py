@@ -27,7 +27,7 @@ class FollowupDowngradePolicy:
         text = context.content
         if len(text) > 60 or not any(marker in text for marker in cls.LIGHT_MARKERS):
             return selection, FollowupDowngradeDecision(False, "not_lightweight")
-        if selection.model == Config.REASONING_MODEL:
+        if selection.route == "deep-reasoning":
             return replace(
                 selection,
                 model=Config.CHAT_MODEL,
@@ -35,7 +35,7 @@ class FollowupDowngradePolicy:
                 route="reasoning",
                 max_output_tokens=min(selection.max_output_tokens, Config.REASONING_MAX_TOKENS),
                 fallback_reason="light_followup_downgrade",
-            ), FollowupDowngradeDecision(True, "sol_to_luna_high")
+            ), FollowupDowngradeDecision(True, "luna_high_to_luna_medium")
         if selection.route in {"reasoning", "long-question"}:
             return replace(
                 selection,
@@ -44,5 +44,5 @@ class FollowupDowngradePolicy:
                 route="normal-chat",
                 max_output_tokens=min(selection.max_output_tokens, Config.NORMAL_CHAT_MAX_TOKENS),
                 fallback_reason="light_followup_downgrade",
-            ), FollowupDowngradeDecision(True, "luna_high_to_luna_low")
+            ), FollowupDowngradeDecision(True, "luna_medium_to_luna_low")
         return selection, FollowupDowngradeDecision(False, "already_lowest")

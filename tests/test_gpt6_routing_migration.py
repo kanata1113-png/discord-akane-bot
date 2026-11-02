@@ -11,10 +11,10 @@ def test_gpt6_router_contract():
     assert Config.FAST_MODEL == "gpt-6-luna"
     assert Config.FAST_REASONING_EFFORT == "low"
     assert Config.CHAT_MODEL == "gpt-6-luna"
-    assert Config.CHAT_REASONING_EFFORT == "high"
-    assert Config.REASONING_MODEL == "gpt-6-terra"
+    assert Config.CHAT_REASONING_EFFORT == "medium"
+    assert Config.REASONING_MODEL == "gpt-6-luna"
     assert Config.REASONING_EFFORT == "medium"
-    assert Config.DEEP_REASONING_EFFORT == "medium"
+    assert Config.DEEP_REASONING_EFFORT == "high"
 
 
 def test_gpt6_route_assignments_keep_three_effort_tiers():
@@ -23,8 +23,8 @@ def test_gpt6_route_assignments_keep_three_effort_tiers():
     deep = RoutingPolicy.tier_for_route("deep-reasoning")
 
     assert (light.model, light.reasoning_effort) == ("gpt-6-luna", "low")
-    assert (standard.model, standard.reasoning_effort) == ("gpt-6-luna", "high")
-    assert (deep.model, deep.reasoning_effort) == ("gpt-6-terra", "medium")
+    assert (standard.model, standard.reasoning_effort) == ("gpt-6-luna", "medium")
+    assert (deep.model, deep.reasoning_effort) == ("gpt-6-luna", "high")
 
 
 def test_shared_luna_model_keeps_distinct_output_budgets():
@@ -39,6 +39,30 @@ def test_shared_luna_model_keeps_distinct_output_budgets():
     assert light.max_output_tokens == 700
     assert standard.target_characters == 840
     assert standard.max_output_tokens == 1200
+
+
+def test_route_identity_survives_adaptive_token_cap():
+    deep = OutputBudgetPolicy.for_request(
+        Config.REASONING_MODEL, "default", 1400, route="deep-reasoning"
+    )
+    standard = OutputBudgetPolicy.for_request(
+        Config.CHAT_MODEL, "default", 1200, route="reasoning"
+    )
+    light = OutputBudgetPolicy.for_request(
+        Config.FAST_MODEL, "default", 900, route="normal-chat"
+    )
+    assert (deep.target_characters, deep.max_output_tokens) == (1680, 1400)
+    assert (standard.target_characters, standard.max_output_tokens) == (840, 1200)
+    assert (light.target_characters, light.max_output_tokens) == (420, 700)
+
+
+def test_response_length_target_uses_effort_not_shared_model_identity():
+    from services.prompt_builder import PromptBuilder
+
+    assert PromptBuilder.response_length_target(Config.FAST_MODEL) == 420
+    assert PromptBuilder.response_length_target(Config.FAST_MODEL, "low") == 420
+    assert PromptBuilder.response_length_target(Config.CHAT_MODEL, "medium") == 840
+    assert PromptBuilder.response_length_target(Config.REASONING_MODEL, "high") == 1680
 
 
 def test_normal_chat_followup_is_not_falsely_downgraded_by_shared_model_name():
@@ -58,7 +82,7 @@ def test_standard_followup_downgrades_effort_even_when_model_name_is_same():
     selection = RoutingPolicy.legacy_selection("メリットとデメリットを比較して")
 
     assert selection.model == Config.CHAT_MODEL
-    assert selection.reasoning_effort == "high"
+    assert selection.reasoning_effort == "medium"
 
     result, decision = FollowupDowngradePolicy.apply(selection, context)
 
@@ -68,7 +92,7 @@ def test_standard_followup_downgrades_effort_even_when_model_name_is_same():
     assert result.route == "normal-chat"
 
 
-def test_weak_deep_route_demotes_to_luna_high():
+def test_weak_deep_route_demotes_to_luna_medium():
     from services.advanced_promotion import AdvancedPromotionGate
 
     selection = RoutingPolicy.legacy_selection("徹底的に")
@@ -77,5 +101,5 @@ def test_weak_deep_route_demotes_to_luna_high():
 
     assert not decision.promoted
     assert result.model == "gpt-6-luna"
-    assert result.reasoning_effort == "high"
+    assert result.reasoning_effort == "medium"
     assert result.route == "reasoning"

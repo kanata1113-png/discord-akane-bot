@@ -57,13 +57,13 @@ class RouteSelection:
 class RoutingPolicy:
     """Single chat-routing policy with safe Legacy fallback.
 
-    GPT-6 routing uses three effort tiers across two models:
+    GPT-6 routing uses three effort tiers on one Luna model:
     - normal-chat -> Luna / low
-    - reasoning/regulation/long-question -> Luna / high
-    - deep-reasoning -> Sol / medium
+    - reasoning/regulation/long-question -> Luna / medium
+    - deep-reasoning -> Luna / high
 
     Route labels remain stable so Jev, continuity, telemetry, and replay stay
-    backward-compatible even though light and standard work now share Luna.
+    backward-compatible even though all three tiers now share Luna.
     """
 
     def __init__(
@@ -217,6 +217,8 @@ class RoutingPolicy:
             estimated_cost_units=CostPolicy.estimate_units(
                 selection.model,
                 selection.max_output_tokens,
+                route=selection.route,
+                reasoning_effort=selection.reasoning_effort,
             ),
         )
 
