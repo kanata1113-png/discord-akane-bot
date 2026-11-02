@@ -18,7 +18,7 @@ def test_cost_policy_distinguishes_shared_luna_tiers(monkeypatch):
     assert CostPolicy.model_weight(
         Config.CHAT_MODEL,
         route="reasoning",
-        reasoning_effort="high",
+        reasoning_effort="medium",
     ) == 1.0
     # Ambiguous shared Luna calls must not silently under-estimate cost.
     assert CostPolicy.model_weight(Config.FAST_MODEL) == 1.0
@@ -69,8 +69,8 @@ def test_dashboard_rows_use_tiers_not_model_names():
         "by_tier": {"light": 5, "normal": 3, "advanced": 2},
     })
     assert rows[0][:4] == ("LIGHT", "gpt-6-luna / low", 5, 50.0)
-    assert rows[1][:4] == ("NORMAL", "gpt-6-luna / high", 3, 30.0)
-    assert rows[2][:4] == ("ADVANCED", "gpt-6-terra / medium", 2, 20.0)
+    assert rows[1][:4] == ("NORMAL", "gpt-6-luna / medium", 3, 30.0)
+    assert rows[2][:4] == ("ADVANCED", "gpt-6-luna / high", 2, 20.0)
 
 
 def test_admin_diagnostic_baseline_uses_real_dashboard_name():
