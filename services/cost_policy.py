@@ -11,9 +11,9 @@ class CostPolicy:
     Values are intentionally relative units, not provider price claims. They can
     be calibrated later without changing routing behavior.
 
-    GPT-6 uses the same Luna model name for both LIGHT and NORMAL. Therefore
+    GPT-6 uses the same Luna model name for LIGHT, STANDARD and ADVANCED. Therefore
     model name alone is insufficient to select a weight; callers should provide
-    route and/or reasoning_effort. Ambiguous Luna calls fail conservatively to
+    route and/or reasoning_effort. Ambiguous Luna calls fall back to
     the standard/chat weight instead of silently underestimating usage.
     """
 
@@ -36,20 +36,12 @@ class CostPolicy:
         route: str | None = None,
         reasoning_effort: str | None = None,
     ) -> float:
-        if model == Config.REASONING_MODEL:
+        # One model serves all tiers; route/effort are authoritative.
+        if route == "deep-reasoning" or reasoning_effort == Config.DEEP_REASONING_EFFORT:
             return cls._weight("AI_COST_WEIGHT_REASONING", 3.0)
-
-        if model == Config.FAST_MODEL == Config.CHAT_MODEL:
-            if reasoning_effort == Config.FAST_REASONING_EFFORT or route in cls.LIGHT_ROUTES:
-                return cls._weight("AI_COST_WEIGHT_FAST", 0.5)
-            if reasoning_effort == Config.CHAT_REASONING_EFFORT or route in cls.STANDARD_ROUTES:
-                return cls._weight("AI_COST_WEIGHT_CHAT", 1.0)
-            return cls._weight("AI_COST_WEIGHT_CHAT", 1.0)
-
-        if model == Config.FAST_MODEL:
+        if route in cls.LIGHT_ROUTES or reasoning_effort == Config.FAST_REASONING_EFFORT:
             return cls._weight("AI_COST_WEIGHT_FAST", 0.5)
-        if model == Config.CHAT_MODEL:
-            return cls._weight("AI_COST_WEIGHT_CHAT", 1.0)
+        # A model-only call is deliberately classified as standard.
         return cls._weight("AI_COST_WEIGHT_CHAT", 1.0)
 
     @classmethod
