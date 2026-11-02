@@ -11,10 +11,10 @@ def test_gpt6_router_contract():
     assert Config.FAST_MODEL == "gpt-6-luna"
     assert Config.FAST_REASONING_EFFORT == "low"
     assert Config.CHAT_MODEL == "gpt-6-luna"
-    assert Config.CHAT_REASONING_EFFORT == "high"
-    assert Config.REASONING_MODEL == "gpt-6-terra"
+    assert Config.CHAT_REASONING_EFFORT == "medium"
+    assert Config.REASONING_MODEL == "gpt-6-luna"
     assert Config.REASONING_EFFORT == "medium"
-    assert Config.DEEP_REASONING_EFFORT == "medium"
+    assert Config.DEEP_REASONING_EFFORT == "high"
 
 
 def test_gpt6_route_assignments_keep_three_effort_tiers():
@@ -23,8 +23,8 @@ def test_gpt6_route_assignments_keep_three_effort_tiers():
     deep = RoutingPolicy.tier_for_route("deep-reasoning")
 
     assert (light.model, light.reasoning_effort) == ("gpt-6-luna", "low")
-    assert (standard.model, standard.reasoning_effort) == ("gpt-6-luna", "high")
-    assert (deep.model, deep.reasoning_effort) == ("gpt-6-terra", "medium")
+    assert (standard.model, standard.reasoning_effort) == ("gpt-6-luna", "medium")
+    assert (deep.model, deep.reasoning_effort) == ("gpt-6-luna", "high")
 
 
 def test_shared_luna_model_keeps_distinct_output_budgets():
@@ -58,7 +58,7 @@ def test_standard_followup_downgrades_effort_even_when_model_name_is_same():
     selection = RoutingPolicy.legacy_selection("メリットとデメリットを比較して")
 
     assert selection.model == Config.CHAT_MODEL
-    assert selection.reasoning_effort == "high"
+    assert selection.reasoning_effort == "medium"
 
     result, decision = FollowupDowngradePolicy.apply(selection, context)
 
@@ -68,7 +68,7 @@ def test_standard_followup_downgrades_effort_even_when_model_name_is_same():
     assert result.route == "normal-chat"
 
 
-def test_weak_deep_route_demotes_to_luna_high():
+def test_weak_deep_route_demotes_to_luna_medium():
     from services.advanced_promotion import AdvancedPromotionGate
 
     selection = RoutingPolicy.legacy_selection("徹底的に")
@@ -77,5 +77,5 @@ def test_weak_deep_route_demotes_to_luna_high():
 
     assert not decision.promoted
     assert result.model == "gpt-6-luna"
-    assert result.reasoning_effort == "high"
+    assert result.reasoning_effort == "medium"
     assert result.route == "reasoning"
