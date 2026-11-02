@@ -37,9 +37,16 @@ class CostPolicy:
         reasoning_effort: str | None = None,
     ) -> float:
         # One model serves all tiers; route/effort are authoritative.
-        if route == "deep-reasoning" or reasoning_effort == Config.DEEP_REASONING_EFFORT:
+        if route == "deep-reasoning":
             return cls._weight("AI_COST_WEIGHT_REASONING", 3.0)
-        if route in cls.LIGHT_ROUTES or reasoning_effort == Config.FAST_REASONING_EFFORT:
+        if route in cls.LIGHT_ROUTES:
+            return cls._weight("AI_COST_WEIGHT_FAST", 0.5)
+        if route in cls.STANDARD_ROUTES:
+            return cls._weight("AI_COST_WEIGHT_CHAT", 1.0)
+        # Unknown routes fall back to effort; model names do not identify tiers.
+        if reasoning_effort == Config.DEEP_REASONING_EFFORT:
+            return cls._weight("AI_COST_WEIGHT_REASONING", 3.0)
+        if reasoning_effort == Config.FAST_REASONING_EFFORT:
             return cls._weight("AI_COST_WEIGHT_FAST", 0.5)
         # A model-only call is deliberately classified as standard.
         return cls._weight("AI_COST_WEIGHT_CHAT", 1.0)
