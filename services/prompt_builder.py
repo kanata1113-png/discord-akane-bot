@@ -20,12 +20,9 @@ class PromptBuilder:
         model: str | None,
         reasoning_effort: str | None = None,
     ) -> int:
-        if model == Config.REASONING_MODEL:
-            effort = reasoning_effort or Config.DEEP_REASONING_EFFORT
-        elif reasoning_effort is None:
-            effort = Config.FAST_REASONING_EFFORT
-        else:
-            effort = reasoning_effort
+        # Model identity does not identify the tier: all routes use Luna.
+        # Callers without an explicit effort retain the light default.
+        effort = reasoning_effort or Config.FAST_REASONING_EFFORT
         return cls.RESPONSE_LENGTH_TARGETS.get((model, effort), 420)
 
     @staticmethod
