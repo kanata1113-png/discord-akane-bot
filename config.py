@@ -46,7 +46,7 @@ class Config:
     # 法律・憲法・規制・比較・長文分析など
     # --------------------------------------------------------------------------
 
-    REASONING_MODEL = "gpt-6-terra"
+    REASONING_MODEL = "gpt-6-luna"
 
     # --------------------------------------------------------------------------
     # 高速処理
@@ -64,11 +64,11 @@ class Config:
 
     FAST_REASONING_EFFORT = "low"
 
-    CHAT_REASONING_EFFORT = "high"
+    CHAT_REASONING_EFFORT = "medium"
 
     REASONING_EFFORT = "medium"
 
-    DEEP_REASONING_EFFORT = "medium"
+    DEEP_REASONING_EFFORT = "high"
 
     # ==========================================================================
     # AI Limits
