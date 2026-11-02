@@ -15,9 +15,8 @@ class OutputBudget:
 class OutputBudgetPolicy:
     """Cost-conscious soft character targets backed by conservative token caps.
 
-    GPT-6 uses Luna for both light and standard work, differentiated by reasoning
-    effort. Budget lookup therefore must not use model name alone: light and
-    standard Luna keep distinct output envelopes. Sol remains the deep tier.
+    GPT-6 uses Luna for all three effort tiers. Budget lookup must use the
+    route cap instead of model identity to preserve distinct output envelopes.
     """
 
     DEFAULTS = {
@@ -38,11 +37,10 @@ class OutputBudgetPolicy:
 
     @staticmethod
     def _tier_key(model: str, route_cap: int) -> str:
-        if model == Config.REASONING_MODEL:
+        if route_cap > Config.REASONING_MAX_TOKENS:
             return "deep"
-        # FAST_MODEL and CHAT_MODEL intentionally share gpt-6-luna. Their
-        # configured route caps remain distinct and preserve the light/standard
-        # output budgets without coupling behavior to a model-name difference.
+        # All three configured models share gpt-6-luna; route caps preserve
+        # tier-specific budgets independent of model identity.
         if route_cap > Config.NORMAL_CHAT_MAX_TOKENS:
             return "standard"
         return "light"
