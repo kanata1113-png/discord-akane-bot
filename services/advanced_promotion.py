@@ -52,7 +52,7 @@ class AdvancedPromotionGate:
         selection: RouteSelection,
         content: str,
     ) -> tuple[RouteSelection, PromotionDecision]:
-        if selection.model != Config.REASONING_MODEL:
+        if selection.route != "deep-reasoning":
             return selection, PromotionDecision(False, "not_advanced_candidate", 0)
 
         score = cls.score(content)
