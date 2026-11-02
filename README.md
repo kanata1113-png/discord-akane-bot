@@ -31,8 +31,8 @@ Production entrypoint: `bot.py` → `app.AkaneBot`.
 Current OpenAI routing target:
 
 - Light: `gpt-6-luna` / `low`
-- Standard: `gpt-6-luna` / `high`
-- Advanced: `gpt-6-sol` / `medium`
+- Standard: `gpt-6-luna` / `medium`
+- Advanced: `gpt-6-luna` / `high`
 - OpenAI execution boundary: Responses API
 - Jev remains the routing/preprocessing layer and never authorizes privileged actions.
 
