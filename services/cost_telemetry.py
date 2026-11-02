@@ -99,21 +99,15 @@ class CostTelemetry:
             1
             for e in events
             if e.model == Config.FAST_MODEL
-            and (
-                e.route in light_routes
-                or e.reasoning_effort == Config.FAST_REASONING_EFFORT
-            )
+            and (e.route in light_routes or (e.route not in standard_routes | {"deep-reasoning"} and e.reasoning_effort == Config.FAST_REASONING_EFFORT))
         )
         luna_high = sum(
             1
             for e in events
             if e.model == Config.CHAT_MODEL
-            and (
-                e.route in standard_routes
-                or e.reasoning_effort == Config.CHAT_REASONING_EFFORT
-            )
+            and (e.route in standard_routes or (e.route not in light_routes | {"deep-reasoning"} and e.reasoning_effort == Config.CHAT_REASONING_EFFORT))
         )
-        advanced = sum(1 for e in events if e.model == Config.REASONING_MODEL)
+        advanced = sum(1 for e in events if e.route == "deep-reasoning" or (e.route not in light_routes | standard_routes and e.reasoning_effort == Config.DEEP_REASONING_EFFORT))
 
         model_calls = len(events)
         logical_keys = {
