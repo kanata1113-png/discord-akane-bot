@@ -301,7 +301,8 @@ async def test_regulation_prompt_is_preserved_when_jev_selects_normal_chat():
 
 
 def test_specialized_tasks_remain_outside_jev_routing():
-    assert Config.FAST_MODEL != Config.REASONING_MODEL
+    assert Config.FAST_MODEL == Config.REASONING_MODEL
+    assert Config.FAST_REASONING_EFFORT != Config.DEEP_REASONING_EFFORT
     system, user = AiManager.get_system_prompt(), "hello"
     assert system
     assert user == "hello"
