@@ -3,14 +3,14 @@ from config import Config
 
 def test_ai_model_routing_configuration_is_stable():
     assert Config.CHAT_MODEL == "gpt-6-luna"
-    assert Config.REASONING_MODEL == "gpt-6-terra"
+    assert Config.REASONING_MODEL == "gpt-6-luna"
     assert Config.FAST_MODEL == "gpt-6-luna"
     assert Config.GPT_MODEL == Config.CHAT_MODEL
 
     assert Config.FAST_REASONING_EFFORT == "low"
-    assert Config.CHAT_REASONING_EFFORT == "high"
+    assert Config.CHAT_REASONING_EFFORT == "medium"
     assert Config.REASONING_EFFORT == "medium"
-    assert Config.DEEP_REASONING_EFFORT == "medium"
+    assert Config.DEEP_REASONING_EFFORT == "high"
 
 
 def test_core_limits_are_stable():
