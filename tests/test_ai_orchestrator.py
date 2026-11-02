@@ -98,7 +98,9 @@ def test_response_length_targets_follow_model_tiers():
 
 
 def test_response_style_uses_compact_discord_markdown():
-    prompt = PromptBuilder.response_style_prompt(Config.REASONING_MODEL)
+    prompt = PromptBuilder.response_style_prompt(
+        Config.REASONING_MODEL, target_characters=1680
+    )
 
     assert "おおむね1680文字以内" in prompt
     assert "絵文字" in prompt
