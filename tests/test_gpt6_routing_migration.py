@@ -41,6 +41,30 @@ def test_shared_luna_model_keeps_distinct_output_budgets():
     assert standard.max_output_tokens == 1200
 
 
+def test_route_identity_survives_adaptive_token_cap():
+    deep = OutputBudgetPolicy.for_request(
+        Config.REASONING_MODEL, "default", 1400, route="deep-reasoning"
+    )
+    standard = OutputBudgetPolicy.for_request(
+        Config.CHAT_MODEL, "default", 1200, route="reasoning"
+    )
+    light = OutputBudgetPolicy.for_request(
+        Config.FAST_MODEL, "default", 900, route="normal-chat"
+    )
+    assert (deep.target_characters, deep.max_output_tokens) == (1680, 1400)
+    assert (standard.target_characters, standard.max_output_tokens) == (840, 1200)
+    assert (light.target_characters, light.max_output_tokens) == (420, 700)
+
+
+def test_response_length_target_uses_effort_not_shared_model_identity():
+    from services.prompt_builder import PromptBuilder
+
+    assert PromptBuilder.response_length_target(Config.FAST_MODEL) == 420
+    assert PromptBuilder.response_length_target(Config.FAST_MODEL, "low") == 420
+    assert PromptBuilder.response_length_target(Config.CHAT_MODEL, "medium") == 840
+    assert PromptBuilder.response_length_target(Config.REASONING_MODEL, "high") == 1680
+
+
 def test_normal_chat_followup_is_not_falsely_downgraded_by_shared_model_name():
     history = [{"role": "user", "content": "こんにちは"}, {"role": "assistant", "content": "やあ"}]
     context = OrchestrationContextBuilder.build("それを短く", history)
