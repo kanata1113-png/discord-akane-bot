@@ -1,6 +1,6 @@
 """Monthly schedule, configuration and delivery regression tests."""
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
@@ -14,8 +14,8 @@ from services.admin_capabilities import CONFIG_MONTHLY_SPEC
 def test_monthly_and_memory_schedules_use_real_jst_offset():
     assert SCHEDULE_TZ.key == "Asia/Tokyo"
     assert datetime(2026, 11, 1, 7, tzinfo=SCHEDULE_TZ).utcoffset() == timedelta(hours=9)
-    assert BackgroundTasksCog.loop_monthly.time[0].utcoffset() == timedelta(hours=9)
-    assert BackgroundTasksCog.loop_memory_cleanup.time[0].utcoffset() == timedelta(hours=9)
+    assert datetime.combine(date(2026, 11, 1), BackgroundTasksCog.loop_monthly.time[0]).utcoffset() == timedelta(hours=9)
+    assert datetime.combine(date(2026, 11, 1), BackgroundTasksCog.loop_memory_cleanup.time[0]).utcoffset() == timedelta(hours=9)
     assert (BackgroundTasksCog.loop_monthly.time[0].hour,
             BackgroundTasksCog.loop_monthly.time[0].minute) == (7, 0)
     assert (BackgroundTasksCog.loop_memory_cleanup.time[0].hour,
