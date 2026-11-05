@@ -84,6 +84,23 @@ class AdminCommands(LegacyAdminCommands):
                 )
                 text = success_text(result.value)
                 await confirm_interaction.response.edit_message(content=text, view=None)
+            except ValueError as exc:
+                if capability_id == CONFIG_MONTHLY_SPEC.capability_id and str(exc).startswith("monthly_"):
+                    logger.warning(
+                        "Monthly configuration rejected | reason=%s guild=%s",
+                        exc, getattr(confirm_interaction.guild, "id", None),
+                    )
+                    await confirm_interaction.response.send_message(
+                        "月次通知の設定を保存できへんかったで。"
+                        "チャンネルの存在と茜の閲覧・投稿権限を確認してな。",
+                        ephemeral=True,
+                    )
+                else:
+                    logger.exception("Admin capability validation failed | capability=%s", capability_id)
+                    await confirm_interaction.response.send_message(
+                        "設定内容を確認してな。変更は保存してへんで。",
+                        ephemeral=True,
+                    )
             except discord.NotFound:
                 await confirm_interaction.response.send_message(
                     "対象が見つからへんかったで。設定は変更してへんで。",
@@ -197,9 +214,25 @@ class AdminCommands(LegacyAdminCommands):
         elif capability_id == CONFIG_MONTHLY_SPEC.capability_id:
             rule_ch_id = int(arguments["rule_ch_id"])
             target_ch_id = int(arguments["target_ch_id"])
+            rule_channel = guild.get_channel(rule_ch_id)
+            target_channel = guild.get_channel(target_ch_id)
+            if not isinstance(rule_channel, discord.TextChannel):
+                raise ValueError("monthly_rule_channel_unavailable")
+            if not isinstance(target_channel, discord.TextChannel):
+                raise ValueError("monthly_target_channel_unavailable")
+            bot_member = guild.me
+            if bot_member is None:
+                raise ValueError("monthly_bot_member_unavailable")
+            permissions = target_channel.permissions_for(bot_member)
+            if not permissions.view_channel or not permissions.send_messages:
+                raise ValueError("monthly_target_missing_send_permissions")
             await self.bot.db._execute(
                 "INSERT OR REPLACE INTO monthly_rules (guild_id, rule_ch, target_ch) VALUES (?, ?, ?)",
                 (guild.id, rule_ch_id, target_ch_id),
+            )
+            logger.info(
+                "Monthly notification configured | guild=%s rule=%s target=%s actor=%s",
+                guild.id, rule_ch_id, target_ch_id, interaction.user.id,
             )
             value = {"rule_ch_id": rule_ch_id, "target_ch_id": target_ch_id}
         elif capability_id == SETUP_TICKET_SPEC.capability_id:
